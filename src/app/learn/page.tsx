@@ -2,9 +2,13 @@
 
 import { useState, useRef, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { useEmotionDetection, LearningState } from "@/hooks/useEmotionDetection";
+import {
+  useEmotionDetection,
+  LearningState,
+} from "@/hooks/useEmotionDetection";
 import WebcamFeed from "@/components/WebcamFeed";
 import EmotionDashboard from "@/components/EmotionDashboard";
+import MobileDrawer from "@/components/MobileDrawer";
 
 interface Message {
   role: "user" | "assistant";
@@ -20,6 +24,7 @@ function LearnPageContent() {
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [showDashboard, setShowDashboard] = useState(true);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastAdaptationRef = useRef<number>(0);
   const prevLearningStateRef = useRef<LearningState>("engaged");
@@ -34,23 +39,25 @@ function LearnPageContent() {
   // Start the lesson automatically
   useEffect(() => {
     if (messages.length === 0) {
-      sendMessage(`I want to learn about: ${topic}. Please start the lesson.`, true);
+      sendMessage(
+        `I want to learn about: ${topic}. Please start the lesson.`,
+        true
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Adaptive intervention: when learning state changes significantly, notify the AI
+  // Adaptive intervention: when learning state changes significantly
   useEffect(() => {
     if (!emotion.isActive || messages.length < 2 || isStreaming) return;
 
     const now = Date.now();
     const timeSinceLastAdaptation = now - lastAdaptationRef.current;
-    if (timeSinceLastAdaptation < 30000) return; // Don't adapt more than every 30s
+    if (timeSinceLastAdaptation < 30000) return;
 
     const prev = prevLearningStateRef.current;
     const current = emotion.learningState;
 
-    // Trigger adaptation on significant state changes
     const shouldAdapt =
       (current === "confused" && prev !== "confused") ||
       (current === "frustrated" && prev !== "frustrated") ||
@@ -70,14 +77,14 @@ function LearnPageContent() {
       if (isStreaming) return;
 
       const userMessage: Message = { role: "user", content };
-      const newMessages = isSystem && messages.length === 0
-        ? [userMessage]
-        : [...messages, userMessage];
+      const newMessages =
+        isSystem && messages.length === 0
+          ? [userMessage]
+          : [...messages, userMessage];
 
       if (!isSystem) {
         setMessages(newMessages);
       } else if (messages.length === 0) {
-        // Don't show the initial system message
         setMessages([]);
       }
 
@@ -91,8 +98,12 @@ function LearnPageContent() {
           body: JSON.stringify({
             topic,
             messages: newMessages,
-            learningState: emotion.isActive ? emotion.learningState : undefined,
-            engagementScore: emotion.isActive ? emotion.engagementScore : undefined,
+            learningState: emotion.isActive
+              ? emotion.learningState
+              : undefined,
+            engagementScore: emotion.isActive
+              ? emotion.engagementScore
+              : undefined,
           }),
         });
 
@@ -106,7 +117,11 @@ function LearnPageContent() {
 
         setMessages((prev) => [
           ...(isSystem && prev.length === 0 ? [] : prev),
-          ...(isSystem && messages.length > 0 ? [userMessage] : isSystem ? [] : []),
+          ...(isSystem && messages.length > 0
+            ? [userMessage]
+            : isSystem
+              ? []
+              : []),
           { role: "assistant", content: "" },
         ]);
 
@@ -150,47 +165,95 @@ function LearnPageContent() {
         setIsStreaming(false);
       }
     },
-    [isStreaming, messages, topic, emotion.isActive, emotion.learningState, emotion.engagementScore]
+    [
+      isStreaming,
+      messages,
+      topic,
+      emotion.isActive,
+      emotion.learningState,
+      emotion.engagementScore,
+    ]
   );
 
+  const stateColors: Record<LearningState, string> = {
+    engaged: "bg-green-500",
+    delighted: "bg-blue-500",
+    confused: "bg-yellow-500",
+    frustrated: "bg-red-500",
+    bored: "bg-gray-500",
+  };
+
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-[100dvh] flex flex-col">
       {/* Header */}
-      <header className="border-b border-gray-800 px-4 py-3 flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-3">
+      <header className="border-b border-gray-800 px-3 sm:px-4 py-3 flex items-center justify-between flex-shrink-0 safe-area-top">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
             onClick={() => router.push("/")}
-            className="text-gray-400 hover:text-white transition-colors"
+            className="text-gray-400 hover:text-white transition-colors flex-shrink-0"
+            aria-label="Go back"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
             </svg>
           </button>
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white text-sm">
+          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white text-xs sm:text-sm flex-shrink-0">
             A
           </div>
-          <div>
-            <h1 className="text-sm font-semibold text-white">{topic}</h1>
-            <p className="text-xs text-gray-500">Ahura AI Tutor</p>
+          <div className="min-w-0">
+            <h1 className="text-xs sm:text-sm font-semibold text-white truncate">
+              {topic}
+            </h1>
+            <p className="text-[10px] sm:text-xs text-gray-500 hidden sm:block">
+              Ahura AI Tutor
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+          {/* Mobile: compact emotion indicator */}
           {emotion.isActive && (
-            <div className="flex items-center gap-2 text-xs text-gray-400">
-              <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-              Emotion AI Active
+            <div className="flex items-center gap-1.5">
+              <div
+                className={`w-2 h-2 rounded-full ${stateColors[emotion.learningState]} animate-pulse`}
+              />
+              <span className="text-[10px] sm:text-xs text-gray-400 hidden sm:inline">
+                Emotion AI Active
+              </span>
             </div>
           )}
+
+          {/* Mobile: open drawer. Desktop: toggle sidebar */}
           <button
-            onClick={() => setShowDashboard(!showDashboard)}
-            className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-              showDashboard
+            onClick={() => {
+              // On mobile, open drawer. On desktop, toggle sidebar.
+              if (window.innerWidth < 1024) {
+                setMobileDrawerOpen(true);
+              } else {
+                setShowDashboard(!showDashboard);
+              }
+            }}
+            className={`px-2.5 sm:px-3 py-1.5 text-[10px] sm:text-xs rounded-lg border transition-colors ${
+              showDashboard || mobileDrawerOpen
                 ? "border-indigo-500 text-indigo-400"
                 : "border-gray-700 text-gray-400"
             }`}
+            aria-label="Toggle emotion dashboard"
           >
-            Dashboard
+            <span className="sm:hidden">
+              {emotion.isActive ? `${emotion.engagementScore}%` : "Camera"}
+            </span>
+            <span className="hidden sm:inline">Dashboard</span>
           </button>
         </div>
       </header>
@@ -200,8 +263,8 @@ function LearnPageContent() {
         {/* Chat / Lesson area */}
         <div className="flex-1 flex flex-col min-w-0">
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-4 py-6">
-            <div className="max-w-3xl mx-auto space-y-6">
+          <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 sm:py-6">
+            <div className="max-w-3xl mx-auto space-y-4 sm:space-y-6">
               {messages
                 .filter((m) => m.content)
                 .map((msg, i) => (
@@ -212,24 +275,26 @@ function LearnPageContent() {
                     }`}
                   >
                     {msg.role === "assistant" ? (
-                      <div className="flex gap-3">
-                        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0 mt-1">
-                          <span className="text-xs font-bold text-white">A</span>
+                      <div className="flex gap-2 sm:gap-3">
+                        <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0 mt-1">
+                          <span className="text-[10px] sm:text-xs font-bold text-white">
+                            A
+                          </span>
                         </div>
-                        <div className="flex-1 lesson-content text-sm leading-relaxed">
+                        <div className="flex-1 min-w-0 lesson-content text-sm leading-relaxed overflow-x-auto">
                           <MarkdownContent content={msg.content} />
                         </div>
                       </div>
                     ) : (
-                      <div className="max-w-lg bg-indigo-600/20 border border-indigo-500/30 rounded-xl px-4 py-3 text-sm text-gray-200">
+                      <div className="max-w-[85%] sm:max-w-lg bg-indigo-600/20 border border-indigo-500/30 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 text-sm text-gray-200">
                         {msg.content}
                       </div>
                     )}
                   </div>
                 ))}
               {isStreaming && (
-                <div className="flex gap-3 items-center">
-                  <div className="w-7 h-7" />
+                <div className="flex gap-2 sm:gap-3 items-center">
+                  <div className="w-6 sm:w-7 h-6 sm:h-7" />
                   <div className="flex gap-1">
                     <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" />
                     <div
@@ -248,8 +313,8 @@ function LearnPageContent() {
           </div>
 
           {/* Input */}
-          <div className="border-t border-gray-800 p-4 flex-shrink-0">
-            <div className="max-w-3xl mx-auto flex gap-3">
+          <div className="border-t border-gray-800 p-2.5 sm:p-4 flex-shrink-0 safe-area-bottom">
+            <div className="max-w-3xl mx-auto flex gap-2 sm:gap-3">
               <input
                 type="text"
                 value={input}
@@ -260,22 +325,37 @@ function LearnPageContent() {
                     sendMessage(input.trim());
                   }
                 }}
-                placeholder="Ask a question or respond to the tutor..."
+                placeholder="Ask a question..."
                 disabled={isStreaming}
-                className="flex-1 bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 transition-colors"
+                className="flex-1 bg-gray-900 border border-gray-700 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 transition-colors"
               />
               <button
                 onClick={() => input.trim() && sendMessage(input.trim())}
                 disabled={isStreaming || !input.trim()}
-                className="px-4 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-medium rounded-xl transition-colors"
+                className="px-3 sm:px-4 py-2.5 sm:py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-medium rounded-xl transition-colors flex-shrink-0"
+                aria-label="Send message"
               >
-                Send
+                {/* Icon on mobile, text on desktop */}
+                <svg
+                  className="w-5 h-5 sm:hidden"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                  />
+                </svg>
+                <span className="hidden sm:inline">Send</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* Sidebar: Webcam + Dashboard */}
+        {/* Desktop sidebar: Webcam + Dashboard */}
         {showDashboard && (
           <div className="w-80 border-l border-gray-800 overflow-y-auto p-4 space-y-4 flex-shrink-0 hidden lg:block">
             <WebcamFeed
@@ -299,6 +379,95 @@ function LearnPageContent() {
           </div>
         )}
       </div>
+
+      {/* Mobile drawer for webcam + dashboard */}
+      <MobileDrawer
+        isOpen={mobileDrawerOpen}
+        onClose={() => setMobileDrawerOpen(false)}
+        title="Emotion Dashboard"
+      >
+        <WebcamFeed
+          videoRef={emotion.videoRef}
+          canvasRef={emotion.canvasRef}
+          isActive={emotion.isActive}
+          isLoading={emotion.isLoading}
+          learningState={emotion.learningState}
+          engagementScore={emotion.engagementScore}
+          onStart={emotion.startDetection}
+          onStop={emotion.stopDetection}
+          error={emotion.error}
+        />
+        <EmotionDashboard
+          emotions={emotion.currentEmotions}
+          learningState={emotion.learningState}
+          engagementScore={emotion.engagementScore}
+          history={emotion.history}
+          isActive={emotion.isActive}
+        />
+      </MobileDrawer>
+
+      {/* Mobile floating PiP webcam (when camera active & drawer closed) */}
+      {emotion.isActive && !mobileDrawerOpen && (
+        <div className="lg:hidden fixed bottom-20 right-3 z-40 safe-area-right">
+          <button
+            onClick={() => setMobileDrawerOpen(true)}
+            className="relative w-20 h-20 rounded-2xl overflow-hidden border-2 shadow-lg active:scale-95 transition-transform"
+            style={{
+              borderColor:
+                emotion.learningState === "engaged"
+                  ? "#10b981"
+                  : emotion.learningState === "confused"
+                    ? "#f59e0b"
+                    : emotion.learningState === "frustrated"
+                      ? "#ef4444"
+                      : emotion.learningState === "delighted"
+                        ? "#3b82f6"
+                        : "#6b7280",
+            }}
+            aria-label={`Emotion: ${emotion.learningState}, engagement ${emotion.engagementScore}%. Tap to open dashboard.`}
+          >
+            {/* Mini engagement score */}
+            <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
+              <div className="text-center">
+                <div
+                  className="text-lg font-bold"
+                  style={{
+                    color:
+                      emotion.learningState === "engaged"
+                        ? "#10b981"
+                        : emotion.learningState === "confused"
+                          ? "#f59e0b"
+                          : emotion.learningState === "frustrated"
+                            ? "#ef4444"
+                            : emotion.learningState === "delighted"
+                              ? "#3b82f6"
+                              : "#6b7280",
+                  }}
+                >
+                  {emotion.engagementScore}%
+                </div>
+                <div className="text-[8px] text-gray-400 uppercase tracking-wider">
+                  {emotion.learningState}
+                </div>
+              </div>
+            </div>
+            {/* Pulse ring */}
+            <div
+              className="absolute inset-0 rounded-2xl animate-ping opacity-20"
+              style={{
+                borderWidth: 2,
+                borderStyle: "solid",
+                borderColor:
+                  emotion.learningState === "engaged"
+                    ? "#10b981"
+                    : emotion.learningState === "confused"
+                      ? "#f59e0b"
+                      : "#ef4444",
+              }}
+            />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -306,35 +475,24 @@ function LearnPageContent() {
 // Simple markdown renderer
 function MarkdownContent({ content }: { content: string }) {
   const html = content
-    // Code blocks
-    .replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>')
-    // Inline code
+    .replace(
+      /```(\w+)?\n([\s\S]*?)```/g,
+      '<pre><code class="language-$1">$2</code></pre>'
+    )
     .replace(/`([^`]+)`/g, "<code>$1</code>")
-    // Headers
     .replace(/^### (.+)$/gm, "<h3>$1</h3>")
     .replace(/^## (.+)$/gm, "<h2>$1</h2>")
     .replace(/^# (.+)$/gm, "<h1>$1</h1>")
-    // Bold
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    // Italic
     .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    // Blockquote
     .replace(/^> (.+)$/gm, "<blockquote>$1</blockquote>")
-    // Unordered lists
     .replace(/^- (.+)$/gm, "<li>$1</li>")
     .replace(/(<li>.*<\/li>\n?)+/g, "<ul>$&</ul>")
-    // Ordered lists
     .replace(/^\d+\. (.+)$/gm, "<li>$1</li>")
-    // Paragraphs
     .replace(/\n\n/g, "</p><p>")
-    // Line breaks
     .replace(/\n/g, "<br/>");
 
-  return (
-    <div
-      dangerouslySetInnerHTML={{ __html: `<p>${html}</p>` }}
-    />
-  );
+  return <div dangerouslySetInnerHTML={{ __html: `<p>${html}</p>` }} />;
 }
 
 function getAdaptationMessage(state: LearningState): string {
@@ -354,7 +512,7 @@ export default function LearnPage() {
   return (
     <Suspense
       fallback={
-        <div className="h-screen flex items-center justify-center">
+        <div className="h-[100dvh] flex items-center justify-center">
           <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
         </div>
       }

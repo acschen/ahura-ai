@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import "./globals.css";
 
@@ -6,6 +6,13 @@ export const metadata: Metadata = {
   title: "Ahura AI - Adaptive Learning with Emotion Intelligence",
   description:
     "AI-powered learning platform that adapts to your emotional state for optimal knowledge absorption",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
