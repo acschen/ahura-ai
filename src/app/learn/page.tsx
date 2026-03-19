@@ -7,7 +7,7 @@ import {
   LearningState,
 } from "@/hooks/useEmotionDetection";
 import WebcamFeed from "@/components/WebcamFeed";
-import EmotionDashboard from "@/components/EmotionDashboard";
+import GenerativeViz from "@/components/GenerativeViz";
 import MobileDrawer from "@/components/MobileDrawer";
 
 interface Message {
@@ -23,7 +23,7 @@ function LearnPageContent() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [showDashboard, setShowDashboard] = useState(true);
+  const [showViz, setShowViz] = useState(true);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastAdaptationRef = useRef<number>(0);
@@ -31,12 +31,10 @@ function LearnPageContent() {
 
   const emotion = useEmotionDetection();
 
-  // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Start the lesson automatically
   useEffect(() => {
     if (messages.length === 0) {
       sendMessage(
@@ -47,13 +45,12 @@ function LearnPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Adaptive intervention: when learning state changes significantly
+  // Adaptive intervention on emotion state changes
   useEffect(() => {
     if (!emotion.isActive || messages.length < 2 || isStreaming) return;
 
     const now = Date.now();
-    const timeSinceLastAdaptation = now - lastAdaptationRef.current;
-    if (timeSinceLastAdaptation < 30000) return;
+    if (now - lastAdaptationRef.current < 30000) return;
 
     const prev = prevLearningStateRef.current;
     const current = emotion.learningState;
@@ -65,8 +62,7 @@ function LearnPageContent() {
 
     if (shouldAdapt) {
       lastAdaptationRef.current = now;
-      const adaptMessage = getAdaptationMessage(current);
-      sendMessage(adaptMessage, true);
+      sendMessage(getAdaptationMessage(current), true);
     }
 
     prevLearningStateRef.current = current;
@@ -108,7 +104,6 @@ function LearnPageContent() {
         });
 
         if (!res.ok) throw new Error("API request failed");
-
         const reader = res.body?.getReader();
         if (!reader) throw new Error("No reader");
 
@@ -128,10 +123,8 @@ function LearnPageContent() {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-
           const text = decoder.decode(value);
           const lines = text.split("\n").filter((l) => l.startsWith("data: "));
-
           for (const line of lines) {
             const data = line.slice(6);
             if (data === "[DONE]") break;
@@ -147,7 +140,7 @@ function LearnPageContent() {
                 return updated;
               });
             } catch {
-              // skip parse errors
+              // skip
             }
           }
         }
@@ -157,8 +150,7 @@ function LearnPageContent() {
           ...prev,
           {
             role: "assistant",
-            content:
-              "I encountered an error. Please try again or check your connection.",
+            content: "I encountered an error. Please try again.",
           },
         ]);
       } finally {
@@ -186,7 +178,7 @@ function LearnPageContent() {
   return (
     <div className="h-[100dvh] flex flex-col">
       {/* Header */}
-      <header className="border-b border-gray-800 px-3 sm:px-4 py-3 flex items-center justify-between flex-shrink-0 safe-area-top">
+      <header className="border-b border-gray-800 px-3 sm:px-4 py-2.5 flex items-center justify-between flex-shrink-0 safe-area-top">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
             onClick={() => router.push("/")}
@@ -207,62 +199,49 @@ function LearnPageContent() {
               />
             </svg>
           </button>
-          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white text-xs sm:text-sm flex-shrink-0">
-            A
-          </div>
           <div className="min-w-0">
             <h1 className="text-xs sm:text-sm font-semibold text-white truncate">
               {topic}
             </h1>
-            <p className="text-[10px] sm:text-xs text-gray-500 hidden sm:block">
-              Ahura AI Tutor
-            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-          {/* Mobile: compact emotion indicator */}
+        <div className="flex items-center gap-2 flex-shrink-0">
           {emotion.isActive && (
             <div className="flex items-center gap-1.5">
               <div
                 className={`w-2 h-2 rounded-full ${stateColors[emotion.learningState]} animate-pulse`}
               />
-              <span className="text-[10px] sm:text-xs text-gray-400 hidden sm:inline">
-                Emotion AI Active
+              <span className="text-[10px] text-gray-500 hidden sm:inline font-mono">
+                {emotion.engagementScore}%
               </span>
             </div>
           )}
-
-          {/* Mobile: open drawer. Desktop: toggle sidebar */}
           <button
             onClick={() => {
-              // On mobile, open drawer. On desktop, toggle sidebar.
               if (window.innerWidth < 1024) {
                 setMobileDrawerOpen(true);
               } else {
-                setShowDashboard(!showDashboard);
+                setShowViz(!showViz);
               }
             }}
-            className={`px-2.5 sm:px-3 py-1.5 text-[10px] sm:text-xs rounded-lg border transition-colors ${
-              showDashboard || mobileDrawerOpen
-                ? "border-indigo-500 text-indigo-400"
-                : "border-gray-700 text-gray-400"
+            className={`px-2 py-1 text-[10px] sm:text-xs rounded-lg border transition-colors font-mono ${
+              showViz || mobileDrawerOpen
+                ? "border-indigo-500/50 text-indigo-400"
+                : "border-gray-700 text-gray-500"
             }`}
             aria-label="Toggle emotion dashboard"
           >
-            <span className="sm:hidden">
-              {emotion.isActive ? `${emotion.engagementScore}%` : "Camera"}
-            </span>
-            <span className="hidden sm:inline">Dashboard</span>
+            <span className="sm:hidden">VIZ</span>
+            <span className="hidden sm:inline">GENERATIVE</span>
           </button>
         </div>
       </header>
 
       {/* Main content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Chat / Lesson area */}
+        {/* Chat area */}
         <div className="flex-1 flex flex-col min-w-0">
-          {/* Messages */}
           <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 sm:py-6">
             <div className="max-w-3xl mx-auto space-y-4 sm:space-y-6">
               {messages
@@ -297,14 +276,8 @@ function LearnPageContent() {
                   <div className="w-6 sm:w-7 h-6 sm:h-7" />
                   <div className="flex gap-1">
                     <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" />
-                    <div
-                      className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce"
-                      style={{ animationDelay: "0.1s" }}
-                    />
-                    <div
-                      className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce"
-                      style={{ animationDelay: "0.2s" }}
-                    />
+                    <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: "0.1s" }} />
+                    <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }} />
                   </div>
                 </div>
               )}
@@ -335,19 +308,8 @@ function LearnPageContent() {
                 className="px-3 sm:px-4 py-2.5 sm:py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-medium rounded-xl transition-colors flex-shrink-0"
                 aria-label="Send message"
               >
-                {/* Icon on mobile, text on desktop */}
-                <svg
-                  className="w-5 h-5 sm:hidden"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                  />
+                <svg className="w-5 h-5 sm:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                 </svg>
                 <span className="hidden sm:inline">Send</span>
               </button>
@@ -355,37 +317,53 @@ function LearnPageContent() {
           </div>
         </div>
 
-        {/* Desktop sidebar: Webcam + Dashboard */}
-        {showDashboard && (
-          <div className="w-80 border-l border-gray-800 overflow-y-auto p-4 space-y-4 flex-shrink-0 hidden lg:block">
-            <WebcamFeed
-              videoRef={emotion.videoRef}
-              canvasRef={emotion.canvasRef}
-              isActive={emotion.isActive}
-              isLoading={emotion.isLoading}
-              learningState={emotion.learningState}
-              engagementScore={emotion.engagementScore}
-              onStart={emotion.startDetection}
-              onStop={emotion.stopDetection}
-              error={emotion.error}
-            />
-            <EmotionDashboard
-              emotions={emotion.currentEmotions}
-              learningState={emotion.learningState}
-              engagementScore={emotion.engagementScore}
-              history={emotion.history}
-              isActive={emotion.isActive}
-            />
+        {/* Desktop sidebar: Generative viz + small webcam */}
+        {showViz && (
+          <div className="w-80 xl:w-96 border-l border-gray-800 flex-shrink-0 hidden lg:flex flex-col">
+            {/* Generative visualization — takes most of the space */}
+            <div className="flex-1 min-h-0">
+              <GenerativeViz
+                learningState={emotion.learningState}
+                engagementScore={emotion.engagementScore}
+                emotions={emotion.currentEmotions}
+                isActive={emotion.isActive}
+                className="w-full h-full"
+              />
+            </div>
+
+            {/* Small webcam strip at bottom */}
+            <div className="flex-shrink-0 border-t border-gray-800">
+              <WebcamFeed
+                videoRef={emotion.videoRef}
+                canvasRef={emotion.canvasRef}
+                isActive={emotion.isActive}
+                isLoading={emotion.isLoading}
+                learningState={emotion.learningState}
+                engagementScore={emotion.engagementScore}
+                onStart={emotion.startDetection}
+                onStop={emotion.stopDetection}
+                error={emotion.error}
+              />
+            </div>
           </div>
         )}
       </div>
 
-      {/* Mobile drawer for webcam + dashboard */}
+      {/* Mobile drawer */}
       <MobileDrawer
         isOpen={mobileDrawerOpen}
         onClose={() => setMobileDrawerOpen(false)}
-        title="Emotion Dashboard"
+        title="Generative Visualization"
       >
+        <div className="aspect-square rounded-xl overflow-hidden">
+          <GenerativeViz
+            learningState={emotion.learningState}
+            engagementScore={emotion.engagementScore}
+            emotions={emotion.currentEmotions}
+            isActive={emotion.isActive}
+            className="w-full h-full"
+          />
+        </div>
         <WebcamFeed
           videoRef={emotion.videoRef}
           canvasRef={emotion.canvasRef}
@@ -397,73 +375,30 @@ function LearnPageContent() {
           onStop={emotion.stopDetection}
           error={emotion.error}
         />
-        <EmotionDashboard
-          emotions={emotion.currentEmotions}
-          learningState={emotion.learningState}
-          engagementScore={emotion.engagementScore}
-          history={emotion.history}
-          isActive={emotion.isActive}
-        />
       </MobileDrawer>
 
-      {/* Mobile floating PiP webcam (when camera active & drawer closed) */}
+      {/* Mobile floating viz orb */}
       {emotion.isActive && !mobileDrawerOpen && (
-        <div className="lg:hidden fixed bottom-20 right-3 z-40 safe-area-right">
+        <div className="lg:hidden fixed bottom-20 right-3 z-40">
           <button
             onClick={() => setMobileDrawerOpen(true)}
-            className="relative w-20 h-20 rounded-2xl overflow-hidden border-2 shadow-lg active:scale-95 transition-transform"
+            className="relative w-16 h-16 rounded-full overflow-hidden border-2 shadow-lg active:scale-95 transition-transform"
             style={{
               borderColor:
-                emotion.learningState === "engaged"
-                  ? "#10b981"
-                  : emotion.learningState === "confused"
-                    ? "#f59e0b"
-                    : emotion.learningState === "frustrated"
-                      ? "#ef4444"
-                      : emotion.learningState === "delighted"
-                        ? "#3b82f6"
-                        : "#6b7280",
+                emotion.learningState === "engaged" ? "#10b981"
+                  : emotion.learningState === "confused" ? "#f59e0b"
+                  : emotion.learningState === "frustrated" ? "#ef4444"
+                  : emotion.learningState === "delighted" ? "#3b82f6"
+                  : "#6b7280",
             }}
-            aria-label={`Emotion: ${emotion.learningState}, engagement ${emotion.engagementScore}%. Tap to open dashboard.`}
+            aria-label={`Engagement ${emotion.engagementScore}%. Tap to open visualization.`}
           >
-            {/* Mini engagement score */}
-            <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
-              <div className="text-center">
-                <div
-                  className="text-lg font-bold"
-                  style={{
-                    color:
-                      emotion.learningState === "engaged"
-                        ? "#10b981"
-                        : emotion.learningState === "confused"
-                          ? "#f59e0b"
-                          : emotion.learningState === "frustrated"
-                            ? "#ef4444"
-                            : emotion.learningState === "delighted"
-                              ? "#3b82f6"
-                              : "#6b7280",
-                  }}
-                >
-                  {emotion.engagementScore}%
-                </div>
-                <div className="text-[8px] text-gray-400 uppercase tracking-wider">
-                  {emotion.learningState}
-                </div>
-              </div>
-            </div>
-            {/* Pulse ring */}
-            <div
-              className="absolute inset-0 rounded-2xl animate-ping opacity-20"
-              style={{
-                borderWidth: 2,
-                borderStyle: "solid",
-                borderColor:
-                  emotion.learningState === "engaged"
-                    ? "#10b981"
-                    : emotion.learningState === "confused"
-                      ? "#f59e0b"
-                      : "#ef4444",
-              }}
+            <GenerativeViz
+              learningState={emotion.learningState}
+              engagementScore={emotion.engagementScore}
+              emotions={emotion.currentEmotions}
+              isActive={true}
+              className="w-full h-full"
             />
           </button>
         </div>
@@ -472,13 +407,9 @@ function LearnPageContent() {
   );
 }
 
-// Simple markdown renderer
 function MarkdownContent({ content }: { content: string }) {
   const html = content
-    .replace(
-      /```(\w+)?\n([\s\S]*?)```/g,
-      '<pre><code class="language-$1">$2</code></pre>'
-    )
+    .replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>')
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/^### (.+)$/gm, "<h3>$1</h3>")
     .replace(/^## (.+)$/gm, "<h2>$1</h2>")

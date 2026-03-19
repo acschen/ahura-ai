@@ -128,7 +128,7 @@ test.describe("Learn Page - Mobile Dashboard Drawer", () => {
     await expect(drawer).toBeVisible();
 
     // Camera enable button should be visible in the drawer
-    await expect(drawer.getByText("Enable Camera")).toBeVisible();
+    await expect(drawer.getByRole("button", { name: "Enable Camera" })).toBeVisible();
   });
 
   test("dashboard drawer closes on backdrop tap", async ({ page }, testInfo) => {
@@ -160,12 +160,8 @@ test.describe("Learn Page - Mobile Dashboard Drawer", () => {
 
     await page.goto("/learn?topic=TypeScript");
 
-    // On desktop, sidebar should be visible
-    await expect(page.getByText("Enable Camera")).toBeVisible();
-    // The text "Enable your camera to see real-time emotion analytics" from the dashboard
-    await expect(
-      page.getByText("Enable your camera to see real-time emotion analytics")
-    ).toBeVisible();
+    // On desktop, the webcam feed with Enable Camera button should be visible in the sidebar
+    await expect(page.getByRole("button", { name: "Enable Camera" })).toBeVisible();
   });
 });
 
