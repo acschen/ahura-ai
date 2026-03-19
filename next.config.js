@@ -1,17 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Disable static page caching so deployments take effect immediately
-  headers: async () => [
-    {
-      source: "/:path*",
-      headers: [
-        {
-          key: "Cache-Control",
-          value: "no-cache, no-store, must-revalidate",
-        },
-      ],
-    },
-  ],
+  // Generate unique build IDs to bust cache on every deploy
+  generateBuildId: async () => {
+    return Date.now().toString();
+  },
 };
 
 module.exports = nextConfig;
