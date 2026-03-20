@@ -5,10 +5,29 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-export async function POST(req: NextRequest) {
-  const { topic, messages, learningState, engagementScore } = await req.json();
+interface EmotionContext {
+  currentState: string;
+  engagementScore: number;
+  emotionBreakdown: Record<string, number>;
+  sessionStats: {
+    avgEngagement: number;
+    samplesCollected: number;
+    confusionEvents: number;
+    timeInState: Record<string, number>;
+  };
+  recentTrend: string;
+}
 
-  const systemPrompt = buildSystemPrompt(topic, learningState, engagementScore);
+export async function POST(req: NextRequest) {
+  const { topic, messages, learningState, engagementScore, emotionContext } =
+    await req.json();
+
+  const systemPrompt = buildSystemPrompt(
+    topic,
+    learningState,
+    engagementScore,
+    emotionContext
+  );
 
   const anthropicMessages = messages.map(
     (m: { role: string; content: string }) => ({
@@ -33,7 +52,9 @@ export async function POST(req: NextRequest) {
           event.delta.type === "text_delta"
         ) {
           controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ text: event.delta.text })}\n\n`)
+            encoder.encode(
+              `data: ${JSON.stringify({ text: event.delta.text })}\n\n`
+            )
           );
         }
       }
@@ -54,75 +75,95 @@ export async function POST(req: NextRequest) {
 function buildSystemPrompt(
   topic: string,
   learningState?: string,
-  engagementScore?: number
+  engagementScore?: number,
+  emotionContext?: EmotionContext
 ): string {
-  let adaptiveInstructions = "";
+  let emotionSection = "";
 
+  if (emotionContext) {
+    const ec = emotionContext;
+    const breakdown = Object.entries(ec.emotionBreakdown || {})
+      .filter(([, v]) => (v as number) > 5)
+      .map(([k, v]) => `${k}: ${v}%`)
+      .join(", ");
+
+    emotionSection = `
+## REAL-TIME LEARNER EMOTION DATA (from webcam facial analysis)
+
+Current state: **${ec.currentState.toUpperCase()}**
+Engagement score: **${ec.engagementScore}/100**
+Expression breakdown: ${breakdown || "no data"}
+Recent trend: ${ec.recentTrend}
+${ec.sessionStats.samplesCollected > 0 ? `Session average engagement: ${ec.sessionStats.avgEngagement}/100 (${ec.sessionStats.samplesCollected} samples)` : ""}
+${ec.sessionStats.confusionEvents > 0 ? `Confusion events this session: ${ec.sessionStats.confusionEvents}` : ""}
+
+**How to use this data:**
+- This emotion data updates with every message. Adapt your teaching style accordingly.
+- If engagement is dropping, change your approach — try a different angle, analogy, or difficulty level.
+- If the learner is confused, don't just repeat yourself — rephrase with a simpler analogy or break it into smaller steps.
+- If the learner is bored (high neutral, low engagement), increase the challenge or add something surprising.
+- If the learner is engaged/delighted, maintain your current approach and gradually build complexity.
+- NEVER mention the emotion tracking system to the learner. Just naturally adapt your teaching.
+- Do NOT say things like "I can see you're confused" — instead, just adjust your content naturally.`;
+  }
+
+  let stateGuidance = "";
   if (learningState) {
     switch (learningState) {
       case "confused":
-        adaptiveInstructions = `
-IMPORTANT: The learner appears CONFUSED right now. Adapt your teaching:
-- Break the concept into smaller, simpler steps
-- Use analogies and real-world examples
-- Ask a simple check-in question to verify understanding
-- Avoid introducing new complexity until confusion resolves
-- Use encouraging language`;
+        stateGuidance = `
+**PRIORITY: The learner is CONFUSED.** Your next response MUST:
+- Use a completely different explanation angle than before
+- Start with the simplest possible version of the concept
+- Use a concrete, relatable analogy
+- End with a simple yes/no or multiple-choice question to check understanding
+- Keep it SHORT — long explanations increase confusion`;
         break;
       case "frustrated":
-        adaptiveInstructions = `
-IMPORTANT: The learner appears FRUSTRATED. Adapt your teaching:
-- Acknowledge the difficulty of the material
-- Dramatically simplify your explanation
-- Use a completely different angle or analogy
-- Give a quick win — something easy they can succeed at
-- Be warm and encouraging`;
+        stateGuidance = `
+**PRIORITY: The learner is FRUSTRATED.** Your next response MUST:
+- Acknowledge that this topic is genuinely challenging (without being patronizing)
+- Step back to something the learner already understands
+- Build a bridge from known → unknown with small steps
+- Give them a quick win — something easy to answer correctly
+- Use warmth and encouragement`;
         break;
       case "bored":
-        adaptiveInstructions = `
-IMPORTANT: The learner appears BORED or disengaged. Adapt your teaching:
-- Increase the challenge and complexity
-- Present a surprising fact or counterintuitive example
-- Ask a thought-provoking question
-- Connect the topic to something practical and exciting
-- Make it interactive — pose a challenge or puzzle`;
+        stateGuidance = `
+**PRIORITY: The learner is DISENGAGED.** Your next response MUST:
+- Do something unexpected — a surprising fact, a paradox, a challenge
+- Increase the difficulty or ask a harder question
+- Connect the topic to a real-world problem they might care about
+- Make it interactive — pose a puzzle, thought experiment, or debate
+- Be concise and punchy — cut the filler`;
         break;
       case "delighted":
-        adaptiveInstructions = `
-The learner is DELIGHTED and experiencing a breakthrough moment:
-- Build on this momentum — introduce the next concept
-- Slightly increase difficulty while they're in flow
-- Reinforce what they just understood
-- Keep the energy going`;
+        stateGuidance = `
+The learner just had a breakthrough moment. Ride the momentum:
+- Introduce the next concept while they're in flow
+- Slightly increase complexity
+- Connect this insight to a bigger picture`;
         break;
       case "engaged":
-        adaptiveInstructions = `
-The learner is engaged and following well:
-- Continue at the current pace and difficulty
-- Maintain your teaching approach
-- Gradually introduce more depth`;
+        stateGuidance = `
+The learner is engaged. Continue at current pace, gradually adding depth.`;
         break;
     }
   }
 
-  return `You are an expert AI tutor for Ahura AI, an adaptive learning platform. You are teaching the learner about: "${topic}".
+  return `You are an expert AI tutor for Ahura AI, an adaptive learning platform that monitors learner emotions via webcam to optimize teaching. You are teaching about: "${topic}".
 
-Your teaching approach:
-1. Start with a clear, structured lesson on the topic
-2. Use markdown formatting for clear structure (headers, bullet points, code blocks when relevant)
-3. Break complex topics into digestible sections
-4. Use real-world analogies and examples
-5. After explaining a concept, ask the learner questions to check understanding
-6. Adapt your difficulty based on their responses
-7. Use the Socratic method — guide them to discover answers
+## Teaching approach
+1. Start with a clear, structured lesson. Use markdown headers (##), bullet points, and code blocks.
+2. Break complex topics into digestible sections with real-world analogies.
+3. After explaining, ask the learner questions to check understanding.
+4. Adapt difficulty based on their responses AND their emotional state.
+5. Use the Socratic method — guide them to discover answers.
 
-When the learner first starts, introduce the topic and begin with the fundamentals. Structure your initial response as a lesson with clear sections.
-
-For follow-up messages, continue building on what was taught. If they ask questions, answer them thoroughly. If they answer your questions, provide feedback and move forward.
-
-${adaptiveInstructions}
-
-${engagementScore !== undefined ? `Current engagement score: ${engagementScore}/100` : ""}
-
-Keep responses focused and educational. Use markdown headers (##) to structure sections. Keep individual responses under 500 words unless teaching a complex concept that requires more detail.`;
+## Adaptation rules
+- When the learner first starts, introduce the topic and begin with fundamentals.
+- For follow-ups, build on what was taught. Answer questions thoroughly.
+- Keep responses under 400 words unless a complex concept demands more.
+${emotionSection}
+${stateGuidance}`;
 }

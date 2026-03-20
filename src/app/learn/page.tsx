@@ -45,18 +45,24 @@ function LearnPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Adaptive intervention — trigger when emotion state changes negatively
   useEffect(() => {
     if (!emotion.isActive || messages.length < 2 || isStreaming) return;
     const now = Date.now();
-    if (now - lastAdaptationRef.current < 30000) return;
+    // 15s cooldown between interventions
+    if (now - lastAdaptationRef.current < 15000) return;
     const prev = prevLearningStateRef.current;
     const current = emotion.learningState;
+
+    // Trigger on any negative state transition
     const shouldAdapt =
       (current === "confused" && prev !== "confused") ||
-      (current === "frustrated" && prev !== "frustrated") ||
+      (current === "frustrated") || // always intervene on frustration
       (current === "bored" && prev !== "bored");
+
     if (shouldAdapt) {
       lastAdaptationRef.current = now;
+      // Send as a hidden system message — LLM adapts, user just sees new response
       sendMessage(getAdaptationMessage(current), true);
     }
     prevLearningStateRef.current = current;
@@ -78,6 +84,20 @@ function LearnPageContent() {
       setIsStreaming(true);
       setInput("");
       try {
+        // Build rich emotion context for the LLM
+        const emotionContext = emotion.isActive
+          ? buildEmotionContext({
+              learningState: emotion.learningState,
+              engagementScore: emotion.engagementScore,
+              currentEmotions: emotion.currentEmotions as unknown as Record<string, number>,
+              history: emotion.history.map((h) => ({
+                learningState: h.learningState,
+                engagementScore: h.engagementScore,
+                emotions: h.emotions as unknown as Record<string, number>,
+              })),
+            })
+          : undefined;
+
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -86,6 +106,7 @@ function LearnPageContent() {
             messages: newMessages,
             learningState: emotion.isActive ? emotion.learningState : undefined,
             engagementScore: emotion.isActive ? emotion.engagementScore : undefined,
+            emotionContext,
           }),
         });
         if (!res.ok) throw new Error("API request failed");
@@ -365,14 +386,74 @@ function MarkdownContent({ content }: { content: string }) {
 function getAdaptationMessage(state: LearningState): string {
   switch (state) {
     case "confused":
-      return "[The learner's facial expressions indicate confusion. Please adjust your explanation — simplify, use an analogy, or ask a clarifying question.]";
+      return "[EMOTION ALERT: Learner facial analysis shows confusion. Rephrase your last point using a simpler analogy. Ask a quick check-in question.]";
     case "frustrated":
-      return "[The learner appears frustrated. Please dramatically simplify your approach, acknowledge the difficulty, and provide an easier example or a different angle.]";
+      return "[EMOTION ALERT: Learner is showing frustration. Step back, simplify dramatically, and give them something easy to succeed at before continuing.]";
     case "bored":
-      return "[The learner appears disengaged. Please make the content more challenging, present something surprising, or ask an engaging question to recapture their attention.]";
+      return "[EMOTION ALERT: Learner engagement has dropped. Switch to something surprising, interactive, or challenging to recapture attention.]";
     default:
-      return "[Continue with the current teaching approach.]";
+      return "[Continue teaching — learner appears engaged.]";
   }
+}
+
+function buildEmotionContext(emotion: {
+  learningState: LearningState;
+  engagementScore: number;
+  currentEmotions: Record<string, number>;
+  history: Array<{
+    learningState: LearningState;
+    engagementScore: number;
+    emotions: Record<string, number>;
+  }>;
+}) {
+  const history = emotion.history;
+  const recent = history.slice(-10);
+
+  // Calculate time spent in each state
+  const timeInState: Record<string, number> = {};
+  for (const snap of history) {
+    timeInState[snap.learningState] = (timeInState[snap.learningState] || 0) + 1;
+  }
+
+  // Count confusion events
+  let confusionEvents = 0;
+  for (let i = 1; i < history.length; i++) {
+    if (history[i].learningState === "confused" && history[i - 1].learningState !== "confused")
+      confusionEvents++;
+  }
+
+  // Determine trend
+  let recentTrend = "stable";
+  if (recent.length >= 5) {
+    const firstHalf = recent.slice(0, Math.floor(recent.length / 2));
+    const secondHalf = recent.slice(Math.floor(recent.length / 2));
+    const avgFirst = firstHalf.reduce((s, h) => s + h.engagementScore, 0) / firstHalf.length;
+    const avgSecond = secondHalf.reduce((s, h) => s + h.engagementScore, 0) / secondHalf.length;
+    if (avgSecond - avgFirst > 5) recentTrend = "engagement rising";
+    else if (avgFirst - avgSecond > 5) recentTrend = "engagement dropping";
+  }
+
+  // Emotion breakdown as percentages
+  const emotionBreakdown: Record<string, number> = {};
+  for (const [key, value] of Object.entries(emotion.currentEmotions)) {
+    emotionBreakdown[key] = Math.round((value as number) * 100);
+  }
+
+  return {
+    currentState: emotion.learningState,
+    engagementScore: emotion.engagementScore,
+    emotionBreakdown,
+    sessionStats: {
+      avgEngagement:
+        history.length > 0
+          ? Math.round(history.reduce((s, h) => s + h.engagementScore, 0) / history.length)
+          : emotion.engagementScore,
+      samplesCollected: history.length,
+      confusionEvents,
+      timeInState,
+    },
+    recentTrend,
+  };
 }
 
 export default function LearnPage() {
