@@ -111,10 +111,10 @@ export class OpenCVEmotionEngine {
     this.faceCascade.detectMultiScale(
       gray,
       faces,
-      1.15,
-      5,
+      1.1,
+      4,
       0,
-      new cv.Size(80, 80)
+      new cv.Size(30, 30)
     );
 
     if (faces.size() === 0) {

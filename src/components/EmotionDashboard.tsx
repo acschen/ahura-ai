@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   EmotionScores,
   EmotionSnapshot,
@@ -53,6 +54,8 @@ interface EmotionDashboardProps {
   engagementScore: number;
   history: EmotionSnapshot[];
   isActive: boolean;
+  faceDetected: boolean;
+  lastUpdate: number;
 }
 
 export default function EmotionDashboard({
@@ -61,8 +64,21 @@ export default function EmotionDashboard({
   engagementScore,
   history,
   isActive,
+  faceDetected,
+  lastUpdate,
 }: EmotionDashboardProps) {
   const stateInfo = LEARNING_STATE_INFO[learningState];
+
+  // Live elapsed timer — forces re-render every second to show freshness
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!isActive) return;
+    const interval = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, [isActive]);
+
+  const secondsAgo = lastUpdate ? Math.floor((Date.now() - lastUpdate) / 1000) : null;
+  const isStale = secondsAgo !== null && secondsAgo > 3;
 
   if (!isActive) {
     return (
@@ -78,6 +94,27 @@ export default function EmotionDashboard({
 
   return (
     <div className="space-y-3">
+      {/* Live status bar */}
+      <div className="flex items-center justify-between px-1">
+        <div className="flex items-center gap-1.5">
+          <div
+            className={`w-1.5 h-1.5 rounded-full ${
+              faceDetected ? "bg-green-500 animate-pulse" : "bg-yellow-500"
+            }`}
+          />
+          <span className="text-[10px] text-gray-500 font-mono">
+            {faceDetected ? "FACE LOCKED" : "SEARCHING..."}
+          </span>
+        </div>
+        <span className={`text-[10px] font-mono ${isStale ? "text-yellow-600" : "text-gray-600"}`}>
+          {secondsAgo !== null
+            ? secondsAgo === 0
+              ? "LIVE"
+              : `${secondsAgo}s ago`
+            : "—"}
+        </span>
+      </div>
+
       {/* State + engagement */}
       <div
         className={`border rounded-xl p-3 transition-all duration-700 ${stateInfo.bg}`}
@@ -107,8 +144,25 @@ export default function EmotionDashboard({
         </div>
       </div>
 
+      {/* No face warning */}
+      {!faceDetected && (
+        <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-lg p-2.5 text-center">
+          <p className="text-[10px] text-yellow-500">
+            No face detected — look at the camera
+          </p>
+        </div>
+      )}
+
       {/* Expression bars */}
       <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-3">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[9px] text-gray-500 uppercase tracking-widest">
+            Expressions
+          </span>
+          {faceDetected && (
+            <span className="text-[9px] text-green-600 font-mono">TRACKING</span>
+          )}
+        </div>
         <div className="space-y-1.5">
           {(Object.keys(emotions) as Array<keyof EmotionScores>).map((key) => (
             <div key={key} className="flex items-center gap-2">
@@ -135,7 +189,10 @@ export default function EmotionDashboard({
       {/* Session stats */}
       {history.length > 5 && (
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-3">
-          <div className="grid grid-cols-3 gap-2 text-center">
+          <span className="text-[9px] text-gray-500 uppercase tracking-widest">
+            Session ({history.length} samples)
+          </span>
+          <div className="grid grid-cols-3 gap-2 text-center mt-2">
             <div>
               <div className="text-sm font-bold text-indigo-400 tabular-nums">
                 {sessionStats.avg}%

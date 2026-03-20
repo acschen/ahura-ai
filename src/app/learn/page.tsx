@@ -273,6 +273,8 @@ function LearnPageContent() {
               engagementScore={emotion.engagementScore}
               history={emotion.history}
               isActive={emotion.isActive}
+              faceDetected={emotion.faceDetected}
+              lastUpdate={emotion.lastUpdate}
             />
           </div>
         )}
@@ -301,6 +303,8 @@ function LearnPageContent() {
           engagementScore={emotion.engagementScore}
           history={emotion.history}
           isActive={emotion.isActive}
+          faceDetected={emotion.faceDetected}
+          lastUpdate={emotion.lastUpdate}
         />
       </MobileDrawer>
 

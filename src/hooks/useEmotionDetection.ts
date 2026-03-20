@@ -41,7 +41,6 @@ const DEFAULT_EMOTIONS: EmotionScores = {
   surprised: 0,
 };
 
-// --- Performance: batch state updates to reduce re-renders ---
 function analysisToEmotions(
   analysis: FaceAnalysis,
   recentAnalyses: FaceAnalysis[]
@@ -136,14 +135,6 @@ function calculateEngagement(
   return Math.max(0, Math.min(100, Math.round(score)));
 }
 
-/**
- * PERFORMANCE OPTIMIZATIONS:
- * 1. Detection runs every 1000ms (was 500ms) — halves CPU load
- * 2. Video resolution 160x120 (was 320x240) — 4x fewer pixels to process
- * 3. State updates batched into single setState call
- * 4. Canvas overlay drawing skipped (viz replaces it)
- * 5. History limited to 60 entries (was 120)
- */
 export function useEmotionDetection() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -154,6 +145,8 @@ export function useEmotionDetection() {
   const [learningState, setLearningState] = useState<LearningState>("engaged");
   const [engagementScore, setEngagementScore] = useState(75);
   const [history, setHistory] = useState<EmotionSnapshot[]>([]);
+  const [faceDetected, setFaceDetected] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState<number>(0);
   const [cameraPermission, setCameraPermission] = useState<"prompt" | "granted" | "denied">("prompt");
 
   const engineRef = useRef<OpenCVEmotionEngine | null>(null);
@@ -171,9 +164,9 @@ export function useEmotionDetection() {
       }
       await engineRef.current.load();
 
-      // PERF: Lower resolution = much less work for OpenCV
+      // Use 320x240 — small enough for perf, large enough for reliable face detection
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 160, height: 120, facingMode: "user" },
+        video: { width: 320, height: 240, facingMode: "user" },
       });
       setCameraPermission("granted");
 
@@ -185,12 +178,30 @@ export function useEmotionDetection() {
       setIsActive(true);
       setIsLoading(false);
 
-      // PERF: Detect every 1000ms instead of 500ms
+      // Detect every 800ms — good balance of responsiveness and perf
       detectionIntervalRef.current = setInterval(() => {
         if (!videoRef.current || !engineRef.current) return;
 
         const analysis = engineRef.current.analyzeFrame(videoRef.current);
-        if (!analysis) return;
+
+        // Always update timestamp so UI shows it's live
+        setLastUpdate(Date.now());
+
+        if (!analysis) {
+          setFaceDetected(false);
+          // Clear the canvas overlay when no face
+          if (canvasRef.current) {
+            const ctx = canvasRef.current.getContext("2d");
+            if (ctx) {
+              canvasRef.current.width = videoRef.current!.videoWidth;
+              canvasRef.current.height = videoRef.current!.videoHeight;
+              ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+            }
+          }
+          return;
+        }
+
+        setFaceDetected(true);
 
         recentAnalysesRef.current = [
           ...recentAnalysesRef.current.slice(-15),
@@ -209,15 +220,26 @@ export function useEmotionDetection() {
           faceAnalysis: analysis,
         };
 
-        // PERF: Shorter history
         historyRef.current = [...historyRef.current.slice(-60), snapshot];
 
-        // PERF: Batch all state updates together
+        // Batch state updates
         setCurrentEmotions(emotions);
         setLearningState(state);
         setEngagementScore(engagement);
         setHistory((prev) => [...prev.slice(-60), snapshot]);
-      }, 1000);
+
+        // Draw face overlay on the webcam canvas
+        if (canvasRef.current && videoRef.current) {
+          engineRef.current!.drawOverlay(
+            canvasRef.current,
+            analysis,
+            videoRef.current.videoWidth,
+            videoRef.current.videoHeight,
+            state,
+            engagement
+          );
+        }
+      }, 800);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Camera access denied";
       if (message.includes("Permission") || message.includes("NotAllowed")) {
@@ -241,6 +263,7 @@ export function useEmotionDetection() {
       videoRef.current.srcObject = null;
     }
     setIsActive(false);
+    setFaceDetected(false);
   }, []);
 
   useEffect(() => {
@@ -260,6 +283,8 @@ export function useEmotionDetection() {
     learningState,
     engagementScore,
     history,
+    faceDetected,
+    lastUpdate,
     cameraPermission,
     startDetection,
     stopDetection,
