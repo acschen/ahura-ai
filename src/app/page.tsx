@@ -56,22 +56,20 @@ export default function HomePage() {
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
-      <header className="border-b border-edge-subtle px-4 sm:px-8 py-4 safe-area-top">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <span className="text-base sm:text-lg font-semibold tracking-tight text-content-primary">
-              ahura
-            </span>
-          </div>
-          <span className="text-xs text-content-tertiary">
+      <header className="border-b border-edge-subtle safe-area-top h-12 flex items-center">
+        <div className="w-full max-w-5xl mx-auto px-5 sm:px-8 flex items-center justify-between">
+          <span className="text-[15px] font-semibold tracking-tight text-content-primary">
+            ahura
+          </span>
+          <span className="text-[11px] text-content-tertiary">
             Adaptive Learning Platform
           </span>
         </div>
       </header>
 
       {/* Main */}
-      <main className="flex-1 px-4 sm:px-8 py-10 sm:py-16">
-        <div className="max-w-5xl mx-auto">
+      <main className="flex-1 py-10 sm:py-16">
+        <div className="max-w-5xl mx-auto px-5 sm:px-8">
           {/* Hero */}
           <div className="max-w-2xl mb-12 sm:mb-16">
             <h1 className="text-2xl sm:text-3xl font-semibold text-content-primary mb-3 leading-tight">
@@ -170,8 +168,8 @@ export default function HomePage() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-edge-subtle px-4 sm:px-8 py-4 safe-area-bottom">
-        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-content-tertiary">
+      <footer className="border-t border-edge-subtle py-4 safe-area-bottom">
+        <div className="max-w-5xl mx-auto px-5 sm:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-content-tertiary">
           <span>Ahura AI</span>
           <span>
             Emotion processing runs locally. No video data leaves your device.
