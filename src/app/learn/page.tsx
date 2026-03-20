@@ -12,44 +12,37 @@ import WebcamFeed from "@/components/WebcamFeed";
 import EmotionDashboard from "@/components/EmotionDashboard";
 import MobileDrawer from "@/components/MobileDrawer";
 
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-}
-
 function LearnPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const topic = searchParams.get("topic") || "General Knowledge";
 
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const [isStreaming, setIsStreaming] = useState(false);
+  // Content sections — each is a piece of lesson content
+  const [sections, setSections] = useState<string[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [sectionIndex, setSectionIndex] = useState(0);
   const [showSidebar, setShowSidebar] = useState(true);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const contentEndRef = useRef<HTMLDivElement>(null);
   const lastAdaptationRef = useRef<number>(0);
   const prevLearningStateRef = useRef<LearningState>("engaged");
-
-  // Use refs for values needed in callbacks to avoid stale closures
-  const messagesRef = useRef<Message[]>([]);
-  const isStreamingRef = useRef(false);
-  messagesRef.current = messages;
-  isStreamingRef.current = isStreaming;
+  const conversationRef = useRef<Array<{ role: string; content: string }>>([]);
+  const isGeneratingRef = useRef(false);
 
   const emotion = useEmotionDetection();
   const emotionRef = useRef(emotion);
   emotionRef.current = emotion;
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    contentEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [sections]);
 
-  // Send a message to the API with current emotion context
-  const sendToAPI = useCallback(
-    async (allMessages: Message[], hiddenSystemMsg = false) => {
-      if (isStreamingRef.current) return;
-      setIsStreaming(true);
+  // Generate a section of content
+  const generateSection = useCallback(
+    async (prompt: string, isAdaptation = false) => {
+      if (isGeneratingRef.current) return;
+      isGeneratingRef.current = true;
+      setIsGenerating(true);
 
       try {
         const em = emotionRef.current;
@@ -57,17 +50,24 @@ function LearnPageContent() {
           ? buildEmotionContext(em.learningState, em.engagementScore, em.currentEmotions, em.history)
           : undefined;
 
+        // Add the prompt to conversation history
+        conversationRef.current = [
+          ...conversationRef.current,
+          { role: "user", content: prompt },
+        ];
+
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             topic,
-            messages: allMessages,
+            messages: conversationRef.current,
             learningState: em.isActive ? em.learningState : undefined,
             engagementScore: em.isActive ? em.engagementScore : undefined,
             emotionContext,
           }),
         });
+
         if (!res.ok) throw new Error(`API error: ${res.status}`);
         const reader = res.body?.getReader();
         if (!reader) throw new Error("No reader");
@@ -75,8 +75,8 @@ function LearnPageContent() {
         const decoder = new TextDecoder();
         let content = "";
 
-        // Add empty assistant message
-        setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+        // Add new section
+        setSections((prev) => [...prev, ""]);
 
         while (true) {
           const { done, value } = await reader.read();
@@ -87,43 +87,74 @@ function LearnPageContent() {
             if (data === "[DONE]") break;
             try {
               content += JSON.parse(data).text;
-              setMessages((prev) => {
+              setSections((prev) => {
                 const updated = [...prev];
-                updated[updated.length - 1] = { role: "assistant", content };
+                updated[updated.length - 1] = content;
                 return updated;
               });
             } catch { /* skip */ }
           }
         }
+
+        // Store in conversation
+        conversationRef.current = [
+          ...conversationRef.current,
+          { role: "assistant", content },
+        ];
+        setSectionIndex((prev) => prev + 1);
       } catch (err) {
-        console.error("Chat error:", err);
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: "An error occurred. Please try again." },
-        ]);
+        console.error("Generation error:", err);
       } finally {
-        setIsStreaming(false);
+        isGeneratingRef.current = false;
+        setIsGenerating(false);
       }
     },
     [topic]
   );
 
-  // Initial lesson
+  // Start initial lesson
   useEffect(() => {
-    if (messages.length === 0) {
-      const initMsg: Message = { role: "user", content: `I want to learn about: ${topic}. Please start the lesson.` };
-      sendToAPI([initMsg]);
+    if (sections.length === 0) {
+      generateSection(
+        `Teach me about: ${topic}. Start with the first section — an introduction and overview. Write it as clear, readable prose for a professional learner. Keep this section focused and concise.`
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Adaptive intervention — fires when emotion state shifts negatively
+  // Auto-continue: when the user finishes reading (scrolls near bottom), generate next section
   useEffect(() => {
-    if (!emotion.isActive || isStreaming) return;
-    if (messagesRef.current.length < 2) return;
+    if (isGenerating || sections.length === 0) return;
+
+    const handleScroll = () => {
+      const el = document.querySelector("[data-lesson-scroll]");
+      if (!el) return;
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      const nearBottom = scrollHeight - scrollTop - clientHeight < 150;
+
+      if (nearBottom && !isGeneratingRef.current) {
+        const em = emotionRef.current;
+        const stateHint = em.isActive
+          ? ` The learner's current state is: ${em.learningState} (engagement: ${em.engagementScore}%).`
+          : "";
+        generateSection(
+          `Continue to the next section of this lesson.${stateHint} Build on what you've covered so far. Write the next focused section.`
+        );
+      }
+    };
+
+    const el = document.querySelector("[data-lesson-scroll]");
+    el?.addEventListener("scroll", handleScroll, { passive: true });
+    return () => el?.removeEventListener("scroll", handleScroll);
+  }, [isGenerating, sections.length, generateSection]);
+
+  // Emotion-based adaptation: when learner is struggling, inject adapted content
+  useEffect(() => {
+    if (!emotion.isActive || isGenerating) return;
+    if (sections.length < 1) return;
 
     const now = Date.now();
-    if (now - lastAdaptationRef.current < 12000) return;
+    if (now - lastAdaptationRef.current < 15000) return;
 
     const prev = prevLearningStateRef.current;
     const current = emotion.learningState;
@@ -135,62 +166,45 @@ function LearnPageContent() {
 
     if (shouldAdapt) {
       lastAdaptationRef.current = now;
-
-      // Inject a hidden system message into the conversation and call the API
-      const adaptMsg: Message = {
-        role: "user",
-        content: getAdaptationMessage(current),
-      };
-      const allMessages = [...messagesRef.current, adaptMsg];
-      setMessages(allMessages);
-      sendToAPI(allMessages, true);
+      const prompt = getAdaptationPrompt(current);
+      generateSection(prompt, true);
     }
 
     prevLearningStateRef.current = current;
-  }, [emotion.learningState, emotion.isActive, isStreaming, sendToAPI]);
-
-  const handleSend = useCallback(() => {
-    const text = input.trim();
-    if (!text || isStreaming) return;
-    setInput("");
-    const userMsg: Message = { role: "user", content: text };
-    const allMessages = [...messagesRef.current, userMsg];
-    setMessages(allMessages);
-    sendToAPI(allMessages);
-  }, [input, isStreaming, sendToAPI]);
+  }, [emotion.learningState, emotion.isActive, isGenerating, sections.length, generateSection]);
 
   return (
     <div className="h-[100dvh] flex flex-col bg-surface-primary">
       {/* Header */}
-      <header className="border-b border-edge-subtle flex items-center justify-between flex-shrink-0 safe-area-top h-12">
-        <div className="flex items-center gap-2 min-w-0 pl-4 sm:pl-5">
+      <header className="border-b border-edge-subtle flex items-center justify-between flex-shrink-0 safe-area-top h-11">
+        <div className="flex items-center gap-2 min-w-0 pl-5">
           <button
             onClick={() => router.push("/")}
             className="text-content-tertiary hover:text-content-primary transition-colors p-1 -ml-1"
-            aria-label="Go back"
+            aria-label="Back to courses"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <h1 className="text-sm font-medium text-content-primary truncate">{topic}</h1>
+          <span className="text-[13px] font-medium text-content-primary truncate">{topic}</span>
         </div>
-        <div className="flex items-center gap-2 pr-4 sm:pr-5">
+        <div className="flex items-center gap-2 pr-5">
           {emotion.isActive && (
-            <span className="text-[11px] text-content-tertiary tabular-nums hidden sm:block">
-              {emotion.engagementScore}%
-            </span>
-          )}
-          {emotion.isActive && (
-            <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-              emotion.learningState === "engaged" || emotion.learningState === "delighted"
-                ? "bg-status-success"
-                : emotion.learningState === "confused"
-                  ? "bg-status-warning"
-                  : emotion.learningState === "frustrated"
-                    ? "bg-status-danger"
-                    : "bg-content-tertiary"
-            }`} />
+            <>
+              <span className="text-[11px] text-content-tertiary tabular-nums">
+                {emotion.engagementScore}%
+              </span>
+              <div className={`w-1.5 h-1.5 rounded-full ${
+                emotion.learningState === "engaged" || emotion.learningState === "delighted"
+                  ? "bg-status-success"
+                  : emotion.learningState === "confused"
+                    ? "bg-status-warning"
+                    : emotion.learningState === "frustrated"
+                      ? "bg-status-danger"
+                      : "bg-content-tertiary"
+              }`} />
+            </>
           )}
           <button
             onClick={() => {
@@ -202,7 +216,7 @@ function LearnPageContent() {
                 ? "border-accent/30 text-accent"
                 : "border-edge-subtle text-content-tertiary hover:text-content-secondary"
             }`}
-            aria-label="Toggle emotion dashboard"
+            aria-label="Toggle comprehension monitor"
           >
             Monitor
           </button>
@@ -210,69 +224,65 @@ function LearnPageContent() {
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Lesson content */}
-        <div className="flex-1 flex flex-col min-w-0">
-          <div className="flex-1 overflow-y-auto">
-            <div className="max-w-[640px] mx-auto px-5 sm:px-8 py-8 sm:py-12">
-              {messages.filter((m) => m.content).map((msg, i) => (
-                <div key={i} className="animate-fade-in">
-                  {msg.role === "assistant" ? (
-                    <div className="lesson-content text-[14px] leading-[1.75]">
-                      <MarkdownContent content={msg.content} />
-                    </div>
-                  ) : (
-                    !msg.content.startsWith("[EMOTION ALERT") && (
-                      <div className="my-8 py-3 px-4 rounded border border-edge-subtle bg-surface-card text-[13px] text-content-secondary">
-                        {msg.content}
-                      </div>
-                    )
-                  )}
-                </div>
-              ))}
-              {isStreaming && messages.length > 0 && messages[messages.length - 1]?.content === "" && (
-                <div className="flex items-center gap-2 py-6 text-content-tertiary">
-                  <div className="w-3.5 h-3.5 border border-content-tertiary/50 border-t-transparent rounded-full animate-spin" />
-                  <span className="text-[12px]">Generating...</span>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
+        {/* Reading area */}
+        <div className="flex-1 overflow-y-auto" data-lesson-scroll>
+          <article className="max-w-[620px] mx-auto px-5 sm:px-8 py-10 sm:py-14">
+            {/* Topic header */}
+            <div className="mb-10 pb-6 border-b border-edge-subtle">
+              <h1 className="text-xl sm:text-2xl font-semibold text-content-primary leading-tight mb-2">
+                {topic}
+              </h1>
+              <p className="text-[13px] text-content-tertiary">
+                Adaptive lesson {emotion.isActive ? "· Comprehension monitoring active" : ""}
+              </p>
             </div>
-          </div>
 
-          {/* Input */}
-          <div className="border-t border-edge-subtle flex-shrink-0 safe-area-bottom">
-            <div className="max-w-[640px] mx-auto px-5 sm:px-8 py-3">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSend();
-                    }
-                  }}
-                  placeholder="Ask a question or request clarification..."
-                  disabled={isStreaming}
-                  className="flex-1 bg-surface-card border border-edge-subtle rounded px-3 py-2 text-[13px] text-content-primary placeholder-content-tertiary focus:outline-none focus:border-accent/50 disabled:opacity-40 transition-colors"
-                />
+            {/* Lesson sections */}
+            {sections.map((content, i) => (
+              <div key={i} className="animate-fade-in">
+                {i > 0 && <div className="my-10 border-t border-edge-subtle" />}
+                <div className="lesson-content text-[14px] leading-[1.8]">
+                  <MarkdownContent content={content} />
+                </div>
+              </div>
+            ))}
+
+            {/* Loading indicator */}
+            {isGenerating && (
+              <div className="flex items-center gap-2 py-8 text-content-tertiary">
+                <div className="w-3 h-3 border border-content-tertiary/40 border-t-transparent rounded-full animate-spin" />
+                <span className="text-[12px]">
+                  {sections.length === 0 ? "Preparing lesson..." : "Loading next section..."}
+                </span>
+              </div>
+            )}
+
+            {/* Continue prompt */}
+            {!isGenerating && sections.length > 0 && (
+              <div className="py-10 text-center">
                 <button
-                  onClick={handleSend}
-                  disabled={isStreaming || !input.trim()}
-                  className="px-3 py-2 bg-accent hover:bg-accent-hover disabled:bg-surface-elevated disabled:text-content-tertiary text-white text-[13px] rounded transition-colors flex-shrink-0"
-                  aria-label="Send message"
+                  onClick={() => {
+                    const em = emotionRef.current;
+                    const stateHint = em.isActive
+                      ? ` The learner's current state is: ${em.learningState} (engagement: ${em.engagementScore}%).`
+                      : "";
+                    generateSection(
+                      `Continue to the next section of this lesson.${stateHint} Build on what you've covered. Write the next focused section.`
+                    );
+                  }}
+                  className="text-[12px] text-content-tertiary hover:text-accent transition-colors"
                 >
-                  Submit
+                  Continue reading
                 </button>
               </div>
-            </div>
-          </div>
+            )}
+            <div ref={contentEndRef} />
+          </article>
         </div>
 
         {/* Desktop sidebar */}
         {showSidebar && (
-          <div className="w-64 border-l border-edge-subtle overflow-y-auto p-3 space-y-2.5 flex-shrink-0 hidden lg:block">
+          <div className="w-60 border-l border-edge-subtle overflow-y-auto p-3 space-y-2.5 flex-shrink-0 hidden lg:block">
             <WebcamFeed
               videoRef={emotion.videoRef}
               canvasRef={emotion.canvasRef}
@@ -327,7 +337,7 @@ function LearnPageContent() {
 
       {/* Mobile floating indicator */}
       {emotion.isActive && !mobileDrawerOpen && (
-        <div className="lg:hidden fixed bottom-14 right-4 z-40">
+        <div className="lg:hidden fixed bottom-6 right-4 z-40">
           <button
             onClick={() => setMobileDrawerOpen(true)}
             className="w-9 h-9 rounded-full border flex items-center justify-center bg-surface-card/90 backdrop-blur-sm"
@@ -368,16 +378,16 @@ function MarkdownContent({ content }: { content: string }) {
   return <div dangerouslySetInnerHTML={{ __html: `<p>${html}</p>` }} />;
 }
 
-function getAdaptationMessage(state: LearningState): string {
+function getAdaptationPrompt(state: LearningState): string {
   switch (state) {
     case "confused":
-      return "[EMOTION ALERT: Learner facial analysis shows confusion. Rephrase your last point using a simpler analogy. Ask a quick check-in question.]";
+      return "The learner's facial expressions show confusion about what was just explained. Rewrite or expand on the previous concept using a completely different, simpler analogy. Do not repeat what you already said — explain it from a new angle as if they are encountering it for the first time.";
     case "frustrated":
-      return "[EMOTION ALERT: Learner is showing frustration. Step back, simplify dramatically, and give them something easy to succeed at before continuing.]";
+      return "The learner appears frustrated with the material. Step back to something more fundamental they can grasp easily. Build their confidence with a clear, simple explanation before gradually reconnecting to the harder concept.";
     case "bored":
-      return "[EMOTION ALERT: Learner engagement has dropped. Switch to something surprising, interactive, or challenging to recapture attention.]";
+      return "The learner appears disengaged. Present something unexpected — a surprising fact, a real-world consequence, a counterintuitive example, or a thought-provoking question related to the topic. Make them curious again.";
     default:
-      return "[Continue teaching — learner appears engaged.]";
+      return "Continue to the next section, maintaining the current pace and difficulty.";
   }
 }
 
@@ -431,7 +441,7 @@ export default function LearnPage() {
     <Suspense
       fallback={
         <div className="h-[100dvh] flex items-center justify-center bg-surface-primary">
-          <div className="w-4 h-4 border border-content-tertiary/50 border-t-transparent rounded-full animate-spin" />
+          <div className="w-4 h-4 border border-content-tertiary/40 border-t-transparent rounded-full animate-spin" />
         </div>
       }
     >

@@ -1,9 +1,16 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Generate unique build IDs to bust cache on every deploy
-  generateBuildId: async () => {
-    return Date.now().toString();
-  },
+  generateBuildId: () => Date.now().toString(),
+  headers: async () => [
+    {
+      source: "/:path*",
+      headers: [
+        { key: "Cache-Control", value: "no-store, max-age=0, must-revalidate" },
+        { key: "Pragma", value: "no-cache" },
+        { key: "Expires", value: "0" },
+      ],
+    },
+  ],
 };
 
 module.exports = nextConfig;
