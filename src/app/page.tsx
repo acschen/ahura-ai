@@ -3,38 +3,46 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-const SUGGESTED_TOPICS = [
+const COURSES = [
   {
-    title: "Machine Learning Fundamentals",
-    description: "Neural networks, gradient descent, and model training",
-    icon: "🧠",
+    title: "Data Privacy & Compliance",
+    category: "Regulation",
+    description: "GDPR, CCPA, and federal data handling requirements",
   },
   {
-    title: "Quantum Computing",
-    description: "Qubits, superposition, and quantum algorithms",
-    icon: "⚛️",
+    title: "Cybersecurity Fundamentals",
+    category: "Security",
+    description: "Threat models, incident response, and defense strategies",
   },
   {
-    title: "Blockchain & Web3",
-    description: "Distributed ledgers, smart contracts, and DeFi",
-    icon: "🔗",
+    title: "AI & Machine Learning",
+    category: "Technology",
+    description: "Core concepts, applications, and responsible AI practices",
   },
   {
-    title: "Cybersecurity Essentials",
-    description: "Threat models, encryption, and defense strategies",
-    icon: "🔒",
+    title: "Cloud Infrastructure",
+    category: "Technology",
+    description: "Cloud architecture, migration strategies, and DevOps",
   },
   {
-    title: "Product Management",
-    description: "Strategy, roadmaps, and stakeholder management",
-    icon: "📊",
+    title: "Project Management",
+    category: "Leadership",
+    description: "Agile methodologies, stakeholder management, and delivery",
   },
   {
-    title: "Cloud Architecture",
-    description: "AWS, microservices, and distributed systems",
-    icon: "☁️",
+    title: "Public Policy Analysis",
+    category: "Governance",
+    description: "Evidence-based policy design and impact assessment",
   },
 ];
+
+const CATEGORY_COLORS: Record<string, string> = {
+  Regulation: "text-amber-500 bg-amber-500/8",
+  Security: "text-red-400 bg-red-400/8",
+  Technology: "text-accent bg-accent-subtle",
+  Leadership: "text-emerald-400 bg-emerald-400/8",
+  Governance: "text-violet-400 bg-violet-400/8",
+};
 
 export default function HomePage() {
   const [customTopic, setCustomTopic] = useState("");
@@ -48,126 +56,127 @@ export default function HomePage() {
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
-      <header className="border-b border-gray-800 px-4 sm:px-6 py-3 sm:py-4 safe-area-top">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white text-sm sm:text-lg">
-              A
-            </div>
-            <div>
-              <h1 className="text-lg sm:text-xl font-bold text-white">Ahura AI</h1>
-              <p className="text-[10px] sm:text-xs text-gray-500">
-                Emotion-Aware Learning
-              </p>
-            </div>
+      <header className="border-b border-edge-subtle px-4 sm:px-8 py-4 safe-area-top">
+        <div className="max-w-5xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <span className="text-base sm:text-lg font-semibold tracking-tight text-content-primary">
+              ahura
+            </span>
           </div>
-          <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-400">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="hidden sm:inline">AI Tutor Ready</span>
-            <span className="sm:hidden">Ready</span>
-          </div>
+          <span className="text-xs text-content-tertiary">
+            Adaptive Learning Platform
+          </span>
         </div>
       </header>
 
-      {/* Hero */}
-      <main className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 py-8 sm:py-12">
-        <div className="max-w-3xl w-full text-center mb-8 sm:mb-12 animate-slide-up">
-          <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-3 sm:mb-4">
-            Learn with{" "}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">
-              Emotional Intelligence
-            </span>
-          </h2>
-          <p className="text-base sm:text-lg text-gray-400 max-w-xl mx-auto">
-            Our AI tutor watches your facial expressions to detect confusion,
-            engagement, and frustration — adapting lessons in real-time for
-            optimal learning.
-          </p>
-        </div>
-
-        {/* Custom topic input */}
-        <div className="w-full max-w-xl mb-8 sm:mb-10 animate-slide-up">
-          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-            <input
-              type="text"
-              value={customTopic}
-              onChange={(e) => setCustomTopic(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && startLearning(customTopic)}
-              placeholder="What do you want to learn today?"
-              className="flex-1 bg-gray-900 border border-gray-700 rounded-xl px-4 sm:px-5 py-3 sm:py-3.5 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
-            />
-            <button
-              onClick={() => startLearning(customTopic)}
-              disabled={!customTopic.trim()}
-              className="px-6 py-3 sm:py-3.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 disabled:text-gray-500 text-white font-medium rounded-xl transition-colors"
-            >
-              Start Learning
-            </button>
+      {/* Main */}
+      <main className="flex-1 px-4 sm:px-8 py-10 sm:py-16">
+        <div className="max-w-5xl mx-auto">
+          {/* Hero */}
+          <div className="max-w-2xl mb-12 sm:mb-16">
+            <h1 className="text-2xl sm:text-3xl font-semibold text-content-primary mb-3 leading-tight">
+              Workforce development that adapts to how you learn
+            </h1>
+            <p className="text-sm sm:text-base text-content-secondary leading-relaxed">
+              AI-powered training with real-time comprehension monitoring.
+              Our platform detects when you&apos;re struggling and adjusts the
+              material — so every minute of training counts.
+            </p>
           </div>
-        </div>
 
-        {/* Suggested topics */}
-        <div className="w-full max-w-3xl">
-          <p className="text-sm text-gray-500 mb-4 text-center">
-            Or choose a topic to get started
-          </p>
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
-            {SUGGESTED_TOPICS.map((topic) => (
+          {/* Search */}
+          <div className="mb-10 sm:mb-14">
+            <label className="block text-xs font-medium text-content-secondary mb-2 uppercase tracking-wider">
+              Start a learning session
+            </label>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                value={customTopic}
+                onChange={(e) => setCustomTopic(e.target.value)}
+                onKeyDown={(e) =>
+                  e.key === "Enter" && startLearning(customTopic)
+                }
+                placeholder="Enter a topic, skill, or competency..."
+                className="flex-1 bg-surface-card border border-edge-subtle rounded-lg px-4 py-2.5 text-sm text-content-primary placeholder-content-tertiary focus:outline-none focus:border-accent transition-colors"
+              />
               <button
-                key={topic.title}
-                onClick={() => startLearning(topic.title)}
-                className="text-left p-4 bg-gray-900/50 border border-gray-800 rounded-xl hover:border-indigo-500/50 hover:bg-gray-900 transition-all group"
+                onClick={() => startLearning(customTopic)}
+                disabled={!customTopic.trim()}
+                className="px-5 py-2.5 bg-accent hover:bg-accent-hover disabled:bg-surface-elevated disabled:text-content-tertiary text-white text-sm font-medium rounded-lg transition-colors"
               >
-                <div className="text-2xl mb-2">{topic.icon}</div>
-                <h3 className="font-medium text-white group-hover:text-indigo-300 transition-colors text-sm">
-                  {topic.title}
-                </h3>
-                <p className="text-xs text-gray-500 mt-1">
-                  {topic.description}
-                </p>
+                Begin
               </button>
+            </div>
+          </div>
+
+          {/* Course catalog */}
+          <div>
+            <h2 className="text-xs font-medium text-content-secondary mb-4 uppercase tracking-wider">
+              Course catalog
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-edge-subtle rounded-lg overflow-hidden">
+              {COURSES.map((course) => (
+                <button
+                  key={course.title}
+                  onClick={() => startLearning(course.title)}
+                  className="text-left p-5 bg-surface-card hover:bg-surface-elevated transition-colors"
+                >
+                  <span
+                    className={`inline-block text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded mb-3 ${
+                      CATEGORY_COLORS[course.category] || "text-content-secondary bg-surface-elevated"
+                    }`}
+                  >
+                    {course.category}
+                  </span>
+                  <h3 className="text-sm font-medium text-content-primary mb-1">
+                    {course.title}
+                  </h3>
+                  <p className="text-xs text-content-tertiary leading-relaxed">
+                    {course.description}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Capabilities */}
+          <div className="mt-14 sm:mt-20 grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-12">
+            {[
+              {
+                title: "Comprehension monitoring",
+                desc: "Webcam-based facial analysis detects confusion, engagement, and frustration in real time. All processing stays local on your device.",
+              },
+              {
+                title: "Adaptive content delivery",
+                desc: "When comprehension drops, the system automatically adjusts difficulty, rephrases concepts, and provides targeted reinforcement.",
+              },
+              {
+                title: "Session analytics",
+                desc: "Track engagement trends, identify knowledge gaps, and measure training effectiveness across your learning sessions.",
+              },
+            ].map((item) => (
+              <div key={item.title}>
+                <h3 className="text-sm font-medium text-content-primary mb-2">
+                  {item.title}
+                </h3>
+                <p className="text-xs text-content-tertiary leading-relaxed">
+                  {item.desc}
+                </p>
+              </div>
             ))}
           </div>
-        </div>
-
-        {/* Features */}
-        <div className="w-full max-w-3xl mt-16 grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[
-            {
-              title: "Real-Time Detection",
-              desc: "Webcam analyzes facial expressions to detect your learning state",
-              color: "from-green-500 to-emerald-600",
-            },
-            {
-              title: "Adaptive Teaching",
-              desc: "AI tutor adjusts difficulty and approach based on your emotions",
-              color: "from-indigo-500 to-blue-600",
-            },
-            {
-              title: "Learning Dashboard",
-              desc: "Live visualization of your emotional journey through the material",
-              color: "from-purple-500 to-pink-600",
-            },
-          ].map((feature) => (
-            <div key={feature.title} className="text-center">
-              <div
-                className={`w-12 h-12 rounded-full bg-gradient-to-br ${feature.color} mx-auto mb-3 flex items-center justify-center`}
-              >
-                <div className="w-3 h-3 bg-white rounded-full" />
-              </div>
-              <h4 className="font-medium text-white text-sm mb-1">
-                {feature.title}
-              </h4>
-              <p className="text-xs text-gray-500">{feature.desc}</p>
-            </div>
-          ))}
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-gray-800 px-4 sm:px-6 py-3 sm:py-4 text-center text-[10px] sm:text-xs text-gray-600 safe-area-bottom">
-        Ahura AI — Learn today. Lead tomorrow. All emotion processing happens
-        locally in your browser.
+      <footer className="border-t border-edge-subtle px-4 sm:px-8 py-4 safe-area-bottom">
+        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-content-tertiary">
+          <span>Ahura AI</span>
+          <span>
+            Emotion processing runs locally. No video data leaves your device.
+          </span>
+        </div>
       </footer>
     </div>
   );

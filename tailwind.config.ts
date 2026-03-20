@@ -9,35 +9,29 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        ahura: {
-          dark: "#0a0a1a",
-          darker: "#050510",
-          accent: "#6366f1",
-          "accent-light": "#818cf8",
-          glow: "#4f46e5",
-          success: "#10b981",
-          warning: "#f59e0b",
-          danger: "#ef4444",
-          info: "#3b82f6",
+        surface: {
+          primary: "#0d1117",
+          card: "#161b22",
+          elevated: "#1c2128",
         },
-      },
-      animation: {
-        "pulse-glow": "pulse-glow 2s ease-in-out infinite",
-        "slide-up": "slide-up 0.5s ease-out",
-        "fade-in": "fade-in 0.3s ease-out",
-      },
-      keyframes: {
-        "pulse-glow": {
-          "0%, 100%": { boxShadow: "0 0 20px rgba(99, 102, 241, 0.3)" },
-          "50%": { boxShadow: "0 0 40px rgba(99, 102, 241, 0.6)" },
+        edge: {
+          DEFAULT: "#30363d",
+          subtle: "#21262d",
         },
-        "slide-up": {
-          "0%": { transform: "translateY(20px)", opacity: "0" },
-          "100%": { transform: "translateY(0)", opacity: "1" },
+        content: {
+          primary: "#e6edf3",
+          secondary: "#7d8590",
+          tertiary: "#484f58",
         },
-        "fade-in": {
-          "0%": { opacity: "0" },
-          "100%": { opacity: "1" },
+        accent: {
+          DEFAULT: "#2f81f7",
+          subtle: "rgba(47, 129, 247, 0.1)",
+          hover: "#388bfd",
+        },
+        status: {
+          success: "#3fb950",
+          warning: "#d29922",
+          danger: "#f85149",
         },
       },
     },

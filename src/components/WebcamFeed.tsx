@@ -3,42 +3,6 @@
 import { RefObject } from "react";
 import { LearningState } from "@/hooks/useEmotionDetection";
 
-const STATE_CONFIG: Record<
-  LearningState,
-  { label: string; color: string; glow: string; icon: string }
-> = {
-  engaged: {
-    label: "Engaged",
-    color: "text-green-400",
-    glow: "glow-green",
-    icon: "●",
-  },
-  delighted: {
-    label: "Delighted",
-    color: "text-blue-400",
-    glow: "glow-blue",
-    icon: "★",
-  },
-  confused: {
-    label: "Confused",
-    color: "text-yellow-400",
-    glow: "glow-yellow",
-    icon: "?",
-  },
-  frustrated: {
-    label: "Frustrated",
-    color: "text-red-400",
-    glow: "glow-red",
-    icon: "!",
-  },
-  bored: {
-    label: "Bored",
-    color: "text-gray-400",
-    glow: "",
-    icon: "—",
-  },
-};
-
 interface WebcamFeedProps {
   videoRef: RefObject<HTMLVideoElement | null>;
   canvasRef: RefObject<HTMLCanvasElement | null>;
@@ -62,17 +26,14 @@ export default function WebcamFeed({
   onStop,
   error,
 }: WebcamFeedProps) {
-  const config = STATE_CONFIG[learningState];
-
   return (
-    <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-      {/* Webcam view */}
-      <div className="relative aspect-[4/3] bg-gray-950">
+    <div className="border border-edge-subtle rounded-lg overflow-hidden bg-surface-card">
+      <div className="relative aspect-[4/3] bg-surface-primary">
         <video
           ref={videoRef}
           muted
           playsInline
-          className="w-full h-full object-cover mirror"
+          className="w-full h-full object-cover"
           style={{ transform: "scaleX(-1)" }}
         />
         <canvas
@@ -82,40 +43,25 @@ export default function WebcamFeed({
         />
 
         {!isActive && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-950">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-surface-primary">
             {isLoading ? (
               <div className="text-center">
-                <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-                <p className="text-sm text-gray-400">
-                  Loading emotion models...
+                <div className="w-5 h-5 border border-content-tertiary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                <p className="text-xs text-content-tertiary">
+                  Initializing...
                 </p>
               </div>
             ) : (
               <div className="text-center px-4">
-                <div className="w-16 h-16 rounded-full bg-gray-800 flex items-center justify-center mx-auto mb-3">
-                  <svg
-                    className="w-8 h-8 text-gray-500"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.5}
-                      d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
-                    />
-                  </svg>
-                </div>
-                <p className="text-sm text-gray-400 mb-3">
-                  Enable your webcam for emotion-aware learning
+                <p className="text-xs text-content-tertiary mb-3">
+                  Enable camera for comprehension monitoring
                 </p>
                 {error && (
-                  <p className="text-xs text-red-400 mb-3">{error}</p>
+                  <p className="text-[11px] text-status-danger mb-2">{error}</p>
                 )}
                 <button
                   onClick={onStart}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm rounded-lg transition-colors"
+                  className="px-3 py-1.5 bg-accent hover:bg-accent-hover text-white text-xs rounded-md transition-colors"
                 >
                   Enable Camera
                 </button>
@@ -124,18 +70,23 @@ export default function WebcamFeed({
           </div>
         )}
 
-        {/* Learning state overlay */}
         {isActive && (
-          <div className="absolute top-2 left-2 right-2 flex justify-between items-start">
-            <div
-              className={`px-3 py-1.5 rounded-lg bg-black/60 backdrop-blur-sm ${config.glow}`}
-            >
-              <span className={`text-sm font-medium ${config.color}`}>
-                {config.icon} {config.label}
+          <div className="absolute top-1.5 left-1.5 right-1.5 flex justify-between items-start">
+            <div className="px-2 py-1 rounded bg-black/50 backdrop-blur-sm">
+              <span className={`text-[10px] font-medium ${
+                learningState === "engaged" || learningState === "delighted"
+                  ? "text-status-success"
+                  : learningState === "confused"
+                    ? "text-status-warning"
+                    : learningState === "frustrated"
+                      ? "text-status-danger"
+                      : "text-content-tertiary"
+              }`}>
+                {learningState.charAt(0).toUpperCase() + learningState.slice(1)}
               </span>
             </div>
-            <div className="px-3 py-1.5 rounded-lg bg-black/60 backdrop-blur-sm">
-              <span className="text-sm font-medium text-white">
+            <div className="px-2 py-1 rounded bg-black/50 backdrop-blur-sm">
+              <span className="text-[10px] font-medium text-content-primary tabular-nums">
                 {engagementScore}%
               </span>
             </div>
@@ -143,18 +94,17 @@ export default function WebcamFeed({
         )}
       </div>
 
-      {/* Controls */}
       {isActive && (
-        <div className="p-3 border-t border-gray-800 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            <span className="text-xs text-gray-400">Detecting</span>
+        <div className="px-2.5 py-1.5 flex justify-between items-center border-t border-edge-subtle">
+          <div className="flex items-center gap-1.5">
+            <div className="w-1.5 h-1.5 rounded-full bg-status-danger animate-pulse" />
+            <span className="text-[10px] text-content-tertiary">Recording</span>
           </div>
           <button
             onClick={onStop}
-            className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+            className="text-[10px] text-content-tertiary hover:text-content-secondary transition-colors"
           >
-            Disable Camera
+            Disable
           </button>
         </div>
       )}

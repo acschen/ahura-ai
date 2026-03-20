@@ -7,45 +7,22 @@ import {
   LearningState,
 } from "@/hooks/useEmotionDetection";
 
-const LEARNING_STATE_INFO: Record<
-  LearningState,
-  { label: string; color: string; bg: string }
-> = {
-  engaged: {
-    label: "ENGAGED",
-    color: "#10b981",
-    bg: "bg-green-500/10 border-green-500/30",
-  },
-  delighted: {
-    label: "BREAKTHROUGH",
-    color: "#3b82f6",
-    bg: "bg-blue-500/10 border-blue-500/30",
-  },
-  confused: {
-    label: "CONFUSED",
-    color: "#f59e0b",
-    bg: "bg-yellow-500/10 border-yellow-500/30",
-  },
-  frustrated: {
-    label: "FRUSTRATED",
-    color: "#ef4444",
-    bg: "bg-red-500/10 border-red-500/30",
-  },
-  bored: {
-    label: "DISENGAGED",
-    color: "#6b7280",
-    bg: "bg-gray-500/10 border-gray-500/30",
-  },
+const STATE_LABELS: Record<LearningState, { label: string; color: string }> = {
+  engaged: { label: "Engaged", color: "#3fb950" },
+  delighted: { label: "Engaged", color: "#3fb950" },
+  confused: { label: "Needs clarification", color: "#d29922" },
+  frustrated: { label: "Struggling", color: "#f85149" },
+  bored: { label: "Disengaged", color: "#484f58" },
 };
 
 const EMOTION_COLORS: Record<keyof EmotionScores, string> = {
-  happy: "#10b981",
-  surprised: "#3b82f6",
-  neutral: "#6b7280",
-  sad: "#8b5cf6",
-  angry: "#ef4444",
-  fearful: "#f59e0b",
-  disgusted: "#ec4899",
+  happy: "#3fb950",
+  surprised: "#2f81f7",
+  neutral: "#484f58",
+  sad: "#a371f7",
+  angry: "#f85149",
+  fearful: "#d29922",
+  disgusted: "#db61a2",
 };
 
 interface EmotionDashboardProps {
@@ -67,9 +44,8 @@ export default function EmotionDashboard({
   faceDetected,
   lastUpdate,
 }: EmotionDashboardProps) {
-  const stateInfo = LEARNING_STATE_INFO[learningState];
+  const state = STATE_LABELS[learningState];
 
-  // Live elapsed timer — forces re-render every second to show freshness
   const [, setTick] = useState(0);
   useEffect(() => {
     if (!isActive) return;
@@ -78,138 +54,114 @@ export default function EmotionDashboard({
   }, [isActive]);
 
   const secondsAgo = lastUpdate ? Math.floor((Date.now() - lastUpdate) / 1000) : null;
-  const isStale = secondsAgo !== null && secondsAgo > 3;
 
   if (!isActive) {
     return (
-      <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
-        <p className="text-xs text-gray-500 text-center">
+      <div className="border border-edge-subtle rounded-lg p-4 bg-surface-card">
+        <p className="text-xs text-content-tertiary text-center">
           Enable your camera to see real-time emotion analytics
         </p>
       </div>
     );
   }
 
-  const sessionStats = calcStats(history);
+  const stats = calcStats(history);
 
   return (
-    <div className="space-y-3">
-      {/* Live status bar */}
-      <div className="flex items-center justify-between px-1">
+    <div className="space-y-2">
+      {/* Status */}
+      <div className="flex items-center justify-between px-0.5">
         <div className="flex items-center gap-1.5">
           <div
-            className={`w-1.5 h-1.5 rounded-full ${
-              faceDetected ? "bg-green-500 animate-pulse" : "bg-yellow-500"
-            }`}
+            className="w-1.5 h-1.5 rounded-full"
+            style={{ backgroundColor: faceDetected ? "#3fb950" : "#d29922" }}
           />
-          <span className="text-[10px] text-gray-500 font-mono">
-            {faceDetected ? "FACE LOCKED" : "SEARCHING..."}
+          <span className="text-[10px] text-content-tertiary">
+            {faceDetected ? "Tracking" : "No face"}
           </span>
         </div>
-        <span className={`text-[10px] font-mono ${isStale ? "text-yellow-600" : "text-gray-600"}`}>
-          {secondsAgo !== null
-            ? secondsAgo === 0
-              ? "LIVE"
-              : `${secondsAgo}s ago`
-            : "—"}
+        <span className="text-[10px] text-content-tertiary tabular-nums">
+          {secondsAgo !== null ? (secondsAgo < 2 ? "Live" : `${secondsAgo}s`) : ""}
         </span>
       </div>
 
-      {/* State + engagement */}
-      <div
-        className={`border rounded-xl p-3 transition-all duration-700 ${stateInfo.bg}`}
-      >
+      {/* Engagement */}
+      <div className="border border-edge-subtle rounded-lg p-3 bg-surface-card">
         <div className="flex items-center justify-between mb-2">
-          <span
-            className="text-[10px] font-bold tracking-widest transition-colors duration-700"
-            style={{ color: stateInfo.color }}
-          >
-            {stateInfo.label}
+          <span className="text-[11px] text-content-secondary">
+            {state.label}
           </span>
           <span
-            className="text-xl font-bold tabular-nums transition-colors duration-700"
-            style={{ color: stateInfo.color }}
+            className="text-lg font-semibold tabular-nums"
+            style={{ color: state.color }}
           >
             {engagementScore}
           </span>
         </div>
-        <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+        <div className="h-1 bg-surface-elevated rounded-full overflow-hidden">
           <div
             className="h-full rounded-full transition-all duration-700 ease-out"
             style={{
               width: `${engagementScore}%`,
-              backgroundColor: stateInfo.color,
+              backgroundColor: state.color,
             }}
           />
         </div>
       </div>
 
-      {/* No face warning */}
-      {!faceDetected && (
-        <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-lg p-2.5 text-center">
-          <p className="text-[10px] text-yellow-500">
-            No face detected — look at the camera
-          </p>
-        </div>
-      )}
-
-      {/* Expression bars */}
-      <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-3">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-[9px] text-gray-500 uppercase tracking-widest">
-            Expressions
-          </span>
-          {faceDetected && (
-            <span className="text-[9px] text-green-600 font-mono">TRACKING</span>
-          )}
-        </div>
-        <div className="space-y-1.5">
-          {(Object.keys(emotions) as Array<keyof EmotionScores>).map((key) => (
-            <div key={key} className="flex items-center gap-2">
-              <span className="text-[10px] text-gray-500 w-14 capitalize">
-                {key}
-              </span>
-              <div className="flex-1 h-1 bg-gray-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-700 ease-out"
-                  style={{
-                    width: `${Math.round(emotions[key] * 100)}%`,
-                    backgroundColor: EMOTION_COLORS[key],
-                  }}
-                />
+      {/* Expression breakdown */}
+      <div className="border border-edge-subtle rounded-lg p-3 bg-surface-card">
+        <div className="space-y-1">
+          {(Object.keys(emotions) as Array<keyof EmotionScores>)
+            .filter((key) => emotions[key] > 0.02)
+            .sort((a, b) => emotions[b] - emotions[a])
+            .map((key) => (
+              <div key={key} className="flex items-center gap-2">
+                <span className="text-[10px] text-content-tertiary w-14 capitalize">
+                  {key}
+                </span>
+                <div className="flex-1 h-[3px] bg-surface-elevated rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-700 ease-out"
+                    style={{
+                      width: `${Math.round(emotions[key] * 100)}%`,
+                      backgroundColor: EMOTION_COLORS[key],
+                    }}
+                  />
+                </div>
+                <span className="text-[10px] text-content-tertiary w-6 text-right tabular-nums">
+                  {Math.round(emotions[key] * 100)}
+                </span>
               </div>
-              <span className="text-[10px] text-gray-600 w-7 text-right tabular-nums">
-                {Math.round(emotions[key] * 100)}
-              </span>
-            </div>
-          ))}
+            ))}
         </div>
       </div>
 
-      {/* Session stats */}
+      {/* Session */}
       {history.length > 5 && (
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-3">
-          <span className="text-[9px] text-gray-500 uppercase tracking-widest">
-            Session ({history.length} samples)
-          </span>
-          <div className="grid grid-cols-3 gap-2 text-center mt-2">
+        <div className="border border-edge-subtle rounded-lg p-3 bg-surface-card">
+          <div className="flex items-center justify-between text-[10px] text-content-tertiary mb-2">
+            <span>Session</span>
+            <span className="tabular-nums">{history.length} samples</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-center">
             <div>
-              <div className="text-sm font-bold text-indigo-400 tabular-nums">
-                {sessionStats.avg}%
+              <div className="text-sm font-medium text-content-primary tabular-nums">
+                {stats.avg}
               </div>
-              <div className="text-[9px] text-gray-600">AVG</div>
+              <div className="text-[9px] text-content-tertiary">Avg</div>
             </div>
             <div>
-              <div className="text-sm font-bold text-green-400 tabular-nums">
-                {sessionStats.peak}%
+              <div className="text-sm font-medium text-content-primary tabular-nums">
+                {stats.peak}
               </div>
-              <div className="text-[9px] text-gray-600">PEAK</div>
+              <div className="text-[9px] text-content-tertiary">Peak</div>
             </div>
             <div>
-              <div className="text-sm font-bold text-yellow-400 tabular-nums">
-                {sessionStats.confused}
+              <div className="text-sm font-medium text-content-primary tabular-nums">
+                {stats.confused}
               </div>
-              <div className="text-[9px] text-gray-600">CONFUSED</div>
+              <div className="text-[9px] text-content-tertiary">Drops</div>
             </div>
           </div>
         </div>

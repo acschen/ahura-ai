@@ -45,24 +45,19 @@ function LearnPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Adaptive intervention — trigger when emotion state changes negatively
+  // Adaptive intervention
   useEffect(() => {
     if (!emotion.isActive || messages.length < 2 || isStreaming) return;
     const now = Date.now();
-    // 15s cooldown between interventions
     if (now - lastAdaptationRef.current < 15000) return;
     const prev = prevLearningStateRef.current;
     const current = emotion.learningState;
-
-    // Trigger on any negative state transition
     const shouldAdapt =
       (current === "confused" && prev !== "confused") ||
-      (current === "frustrated") || // always intervene on frustration
+      current === "frustrated" ||
       (current === "bored" && prev !== "bored");
-
     if (shouldAdapt) {
       lastAdaptationRef.current = now;
-      // Send as a hidden system message — LLM adapts, user just sees new response
       sendMessage(getAdaptationMessage(current), true);
     }
     prevLearningStateRef.current = current;
@@ -84,7 +79,6 @@ function LearnPageContent() {
       setIsStreaming(true);
       setInput("");
       try {
-        // Build rich emotion context for the LLM
         const emotionContext = emotion.isActive
           ? buildEmotionContext({
               learningState: emotion.learningState,
@@ -142,7 +136,7 @@ function LearnPageContent() {
         console.error("Chat error:", err);
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: "I encountered an error. Please try again." },
+          { role: "assistant", content: "An error occurred. Please try again." },
         ]);
       } finally {
         setIsStreaming(false);
@@ -151,41 +145,37 @@ function LearnPageContent() {
     [isStreaming, messages, topic, emotion.isActive, emotion.learningState, emotion.engagementScore]
   );
 
-  const stateColors: Record<LearningState, string> = {
-    engaged: "bg-green-500",
-    delighted: "bg-blue-500",
-    confused: "bg-yellow-500",
-    frustrated: "bg-red-500",
-    bored: "bg-gray-500",
-  };
-
   return (
     <div className="h-[100dvh] flex flex-col">
       {/* Header */}
-      <header className="border-b border-gray-800 px-3 sm:px-4 py-2.5 flex items-center justify-between flex-shrink-0 safe-area-top">
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+      <header className="border-b border-edge-subtle px-4 sm:px-6 py-3 flex items-center justify-between flex-shrink-0 safe-area-top">
+        <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={() => router.push("/")}
-            className="text-gray-400 hover:text-white transition-colors flex-shrink-0"
+            className="text-content-tertiary hover:text-content-primary transition-colors"
             aria-label="Go back"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white text-xs sm:text-sm flex-shrink-0">
-            A
-          </div>
           <div className="min-w-0">
-            <h1 className="text-xs sm:text-sm font-semibold text-white truncate">{topic}</h1>
-            <p className="text-[10px] sm:text-xs text-gray-500 hidden sm:block">Ahura AI Tutor</p>
+            <h1 className="text-sm font-medium text-content-primary truncate">{topic}</h1>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-3 flex-shrink-0">
           {emotion.isActive && (
-            <div className="flex items-center gap-1.5">
-              <div className={`w-2 h-2 rounded-full ${stateColors[emotion.learningState]} animate-pulse`} />
-              <span className="text-[10px] text-gray-500 hidden sm:inline tabular-nums">{emotion.engagementScore}%</span>
+            <div className="flex items-center gap-1.5 text-xs text-content-tertiary tabular-nums">
+              <div className={`w-1.5 h-1.5 rounded-full ${
+                emotion.learningState === "engaged" || emotion.learningState === "delighted"
+                  ? "bg-status-success"
+                  : emotion.learningState === "confused"
+                    ? "bg-status-warning"
+                    : emotion.learningState === "frustrated"
+                      ? "bg-status-danger"
+                      : "bg-content-tertiary"
+              }`} />
+              <span className="hidden sm:inline">{emotion.engagementScore}%</span>
             </div>
           )}
           <button
@@ -193,58 +183,50 @@ function LearnPageContent() {
               if (window.innerWidth < 1024) setMobileDrawerOpen(true);
               else setShowSidebar(!showSidebar);
             }}
-            className={`px-2.5 sm:px-3 py-1.5 text-[10px] sm:text-xs rounded-lg border transition-colors ${
+            className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
               showSidebar || mobileDrawerOpen
-                ? "border-indigo-500 text-indigo-400"
-                : "border-gray-700 text-gray-400"
+                ? "border-accent/40 text-accent"
+                : "border-edge-subtle text-content-tertiary hover:text-content-secondary"
             }`}
             aria-label="Toggle emotion dashboard"
           >
-            <span className="sm:hidden">{emotion.isActive ? `${emotion.engagementScore}%` : "Camera"}</span>
-            <span className="hidden sm:inline">Dashboard</span>
+            <span className="sm:hidden">Monitor</span>
+            <span className="hidden sm:inline">Monitoring</span>
           </button>
         </div>
       </header>
 
-      {/* Main */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Chat */}
+        {/* Lesson content */}
         <div className="flex-1 flex flex-col min-w-0">
-          <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 sm:py-6">
-            <div className="max-w-3xl mx-auto space-y-4 sm:space-y-6">
+          <div className="flex-1 overflow-y-auto">
+            <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
               {messages.filter((m) => m.content).map((msg, i) => (
-                <div key={i} className={`animate-fade-in ${msg.role === "assistant" ? "" : "flex justify-end"}`}>
+                <div key={i} className="animate-fade-in">
                   {msg.role === "assistant" ? (
-                    <div className="flex gap-2 sm:gap-3">
-                      <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0 mt-1">
-                        <span className="text-[10px] sm:text-xs font-bold text-white">A</span>
-                      </div>
-                      <div className="flex-1 min-w-0 lesson-content text-sm leading-relaxed overflow-x-auto">
-                        <MarkdownContent content={msg.content} />
-                      </div>
+                    <div className="lesson-content text-[14px]">
+                      <MarkdownContent content={msg.content} />
                     </div>
                   ) : (
-                    <div className="max-w-[85%] sm:max-w-lg bg-indigo-600/20 border border-indigo-500/30 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 text-sm text-gray-200">
+                    <div className="my-6 py-3 px-4 rounded-lg bg-accent-subtle border border-accent/10 text-sm text-content-secondary">
                       {msg.content}
                     </div>
                   )}
                 </div>
               ))}
-              {isStreaming && (
-                <div className="flex gap-2 sm:gap-3 items-center">
-                  <div className="w-6 sm:w-7 h-6 sm:h-7" />
-                  <div className="flex gap-1">
-                    <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" />
-                    <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: "0.1s" }} />
-                    <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }} />
-                  </div>
+              {isStreaming && messages.length > 0 && messages[messages.length - 1]?.content === "" && (
+                <div className="flex items-center gap-2 py-4 text-content-tertiary">
+                  <div className="w-4 h-4 border border-content-tertiary border-t-transparent rounded-full animate-spin" />
+                  <span className="text-xs">Generating lesson content...</span>
                 </div>
               )}
               <div ref={messagesEndRef} />
             </div>
           </div>
-          <div className="border-t border-gray-800 p-2.5 sm:p-4 flex-shrink-0 safe-area-bottom">
-            <div className="max-w-3xl mx-auto flex gap-2 sm:gap-3">
+
+          {/* Input */}
+          <div className="border-t border-edge-subtle px-4 sm:px-6 py-3 flex-shrink-0 safe-area-bottom">
+            <div className="max-w-2xl mx-auto flex gap-2">
               <input
                 type="text"
                 value={input}
@@ -255,20 +237,20 @@ function LearnPageContent() {
                     sendMessage(input.trim());
                   }
                 }}
-                placeholder="Ask a question..."
+                placeholder="Ask a question or request clarification..."
                 disabled={isStreaming}
-                className="flex-1 bg-gray-900 border border-gray-700 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 transition-colors"
+                className="flex-1 bg-surface-card border border-edge-subtle rounded-lg px-3 py-2 text-sm text-content-primary placeholder-content-tertiary focus:outline-none focus:border-accent disabled:opacity-50 transition-colors"
               />
               <button
                 onClick={() => input.trim() && sendMessage(input.trim())}
                 disabled={isStreaming || !input.trim()}
-                className="px-3 sm:px-4 py-2.5 sm:py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-medium rounded-xl transition-colors flex-shrink-0"
+                className="px-3 py-2 bg-accent hover:bg-accent-hover disabled:bg-surface-elevated disabled:text-content-tertiary text-white text-sm rounded-lg transition-colors flex-shrink-0"
                 aria-label="Send message"
               >
-                <svg className="w-5 h-5 sm:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                <svg className="w-4 h-4 sm:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
                 </svg>
-                <span className="hidden sm:inline">Send</span>
+                <span className="hidden sm:inline">Submit</span>
               </button>
             </div>
           </div>
@@ -276,7 +258,7 @@ function LearnPageContent() {
 
         {/* Desktop sidebar */}
         {showSidebar && (
-          <div className="w-72 border-l border-gray-800 overflow-y-auto p-3 space-y-3 flex-shrink-0 hidden lg:block">
+          <div className="w-72 border-l border-edge-subtle overflow-y-auto p-3 space-y-3 flex-shrink-0 hidden lg:block">
             <WebcamFeed
               videoRef={emotion.videoRef}
               canvasRef={emotion.canvasRef}
@@ -305,7 +287,7 @@ function LearnPageContent() {
       <MobileDrawer
         isOpen={mobileDrawerOpen}
         onClose={() => setMobileDrawerOpen(false)}
-        title="Emotion Dashboard"
+        title="Comprehension Monitor"
       >
         <WebcamFeed
           videoRef={emotion.videoRef}
@@ -331,31 +313,23 @@ function LearnPageContent() {
 
       {/* Mobile floating indicator */}
       {emotion.isActive && !mobileDrawerOpen && (
-        <div className="lg:hidden fixed bottom-20 right-3 z-40">
+        <div className="lg:hidden fixed bottom-16 right-3 z-40">
           <button
             onClick={() => setMobileDrawerOpen(true)}
-            className="w-14 h-14 rounded-full border-2 shadow-lg flex items-center justify-center active:scale-95 transition-transform bg-gray-900/90 backdrop-blur"
+            className="w-10 h-10 rounded-full border shadow-sm flex items-center justify-center bg-surface-card/95 backdrop-blur"
             style={{
               borderColor:
-                emotion.learningState === "engaged" ? "#10b981"
-                : emotion.learningState === "confused" ? "#f59e0b"
-                : emotion.learningState === "frustrated" ? "#ef4444"
-                : emotion.learningState === "delighted" ? "#3b82f6"
-                : "#6b7280",
+                emotion.learningState === "engaged" || emotion.learningState === "delighted"
+                  ? "#3fb950"
+                  : emotion.learningState === "confused"
+                    ? "#d29922"
+                    : emotion.learningState === "frustrated"
+                      ? "#f85149"
+                      : "#484f58",
             }}
-            aria-label={`Engagement ${emotion.engagementScore}%. Tap to open dashboard.`}
+            aria-label={`Engagement ${emotion.engagementScore}%. Tap to open monitor.`}
           >
-            <span
-              className="text-sm font-bold tabular-nums"
-              style={{
-                color:
-                  emotion.learningState === "engaged" ? "#10b981"
-                  : emotion.learningState === "confused" ? "#f59e0b"
-                  : emotion.learningState === "frustrated" ? "#ef4444"
-                  : emotion.learningState === "delighted" ? "#3b82f6"
-                  : "#6b7280",
-              }}
-            >
+            <span className="text-[11px] font-medium tabular-nums text-content-secondary">
               {emotion.engagementScore}
             </span>
           </button>
@@ -408,21 +382,15 @@ function buildEmotionContext(emotion: {
 }) {
   const history = emotion.history;
   const recent = history.slice(-10);
-
-  // Calculate time spent in each state
   const timeInState: Record<string, number> = {};
   for (const snap of history) {
     timeInState[snap.learningState] = (timeInState[snap.learningState] || 0) + 1;
   }
-
-  // Count confusion events
   let confusionEvents = 0;
   for (let i = 1; i < history.length; i++) {
     if (history[i].learningState === "confused" && history[i - 1].learningState !== "confused")
       confusionEvents++;
   }
-
-  // Determine trend
   let recentTrend = "stable";
   if (recent.length >= 5) {
     const firstHalf = recent.slice(0, Math.floor(recent.length / 2));
@@ -432,13 +400,10 @@ function buildEmotionContext(emotion: {
     if (avgSecond - avgFirst > 5) recentTrend = "engagement rising";
     else if (avgFirst - avgSecond > 5) recentTrend = "engagement dropping";
   }
-
-  // Emotion breakdown as percentages
   const emotionBreakdown: Record<string, number> = {};
   for (const [key, value] of Object.entries(emotion.currentEmotions)) {
     emotionBreakdown[key] = Math.round((value as number) * 100);
   }
-
   return {
     currentState: emotion.learningState,
     engagementScore: emotion.engagementScore,
@@ -460,8 +425,8 @@ export default function LearnPage() {
   return (
     <Suspense
       fallback={
-        <div className="h-[100dvh] flex items-center justify-center">
-          <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+        <div className="h-[100dvh] flex items-center justify-center bg-surface-primary">
+          <div className="w-5 h-5 border border-content-tertiary border-t-transparent rounded-full animate-spin" />
         </div>
       }
     >
