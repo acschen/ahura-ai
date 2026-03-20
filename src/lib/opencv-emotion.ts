@@ -17,11 +17,11 @@ const CASCADE_URLS = {
 export interface FaceAnalysis {
   faceRect: { x: number; y: number; w: number; h: number };
   hasSmile: boolean;
-  smileIntensity: number; // 0-1
-  eyeOpenness: number; // ratio: higher = more open
+  smileIntensity: number;
+  eyeOpenness: number;
   eyeCount: number;
-  expressionVariance: number; // pixel variance in face region
-  motionLevel: number; // 0-1, how much the face moved
+  expressionVariance: number;
+  motionLevel: number;
 }
 
 export class OpenCVEmotionEngine {
@@ -33,30 +33,51 @@ export class OpenCVEmotionEngine {
     null;
   private frameCount = 0;
   private loaded = false;
+  private loadError: string | null = null;
 
   async load(): Promise<void> {
     if (this.loaded) return;
+    if (this.loadError) throw new Error(this.loadError);
 
-    // Wait for OpenCV to be ready
-    await this.waitForOpenCV();
+    try {
+      console.log("[OpenCV] Waiting for OpenCV.js runtime...");
+      await this.waitForOpenCV();
+      console.log("[OpenCV] Runtime ready.");
 
-    // Load cascade files
-    await Promise.all([
-      this.loadCascade("face", CASCADE_URLS.face),
-      this.loadCascade("eye", CASCADE_URLS.eye),
-      this.loadCascade("smile", CASCADE_URLS.smile),
-    ]);
+      // Load cascade files into virtual filesystem
+      console.log("[OpenCV] Fetching cascade files...");
+      await Promise.all([
+        this.loadCascade("face", CASCADE_URLS.face),
+        this.loadCascade("eye", CASCADE_URLS.eye),
+        this.loadCascade("smile", CASCADE_URLS.smile),
+      ]);
+      console.log("[OpenCV] Cascade files loaded into FS.");
 
-    this.faceCascade = new cv.CascadeClassifier();
-    this.faceCascade.load("haarcascade_frontalface_default.xml");
+      // Create classifiers
+      this.faceCascade = new cv.CascadeClassifier();
+      const faceLoaded = this.faceCascade.load("haarcascade_frontalface_default.xml");
+      console.log("[OpenCV] Face cascade loaded:", faceLoaded);
 
-    this.eyeCascade = new cv.CascadeClassifier();
-    this.eyeCascade.load("haarcascade_eye.xml");
+      this.eyeCascade = new cv.CascadeClassifier();
+      const eyeLoaded = this.eyeCascade.load("haarcascade_eye.xml");
+      console.log("[OpenCV] Eye cascade loaded:", eyeLoaded);
 
-    this.smileCascade = new cv.CascadeClassifier();
-    this.smileCascade.load("haarcascade_smile.xml");
+      this.smileCascade = new cv.CascadeClassifier();
+      const smileLoaded = this.smileCascade.load("haarcascade_smile.xml");
+      console.log("[OpenCV] Smile cascade loaded:", smileLoaded);
 
-    this.loaded = true;
+      if (!faceLoaded) {
+        throw new Error("Face cascade classifier failed to load");
+      }
+
+      this.loaded = true;
+      console.log("[OpenCV] Engine fully initialized.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.loadError = msg;
+      console.error("[OpenCV] Load failed:", msg);
+      throw err;
+    }
   }
 
   private waitForOpenCV(): Promise<void> {
@@ -64,8 +85,8 @@ export class OpenCVEmotionEngine {
       const check = (attempts: number) => {
         if (typeof cv !== "undefined" && cv.Mat) {
           resolve();
-        } else if (attempts > 100) {
-          reject(new Error("OpenCV failed to load"));
+        } else if (attempts > 150) {
+          reject(new Error("OpenCV.js failed to load after 15s"));
         } else {
           setTimeout(() => check(attempts + 1), 100);
         }
@@ -77,12 +98,19 @@ export class OpenCVEmotionEngine {
   private async loadCascade(name: string, url: string): Promise<void> {
     const response = await fetch(url);
     if (!response.ok)
-      throw new Error(`Failed to fetch cascade: ${name}`);
-    const buffer = await response.arrayBuffer();
-    const data = new Uint8Array(buffer);
+      throw new Error(`Failed to fetch cascade ${name}: ${response.status}`);
 
+    // Load as text — OpenCV.js FS_createDataFile works more reliably with string data
+    const text = await response.text();
     const fileName = url.split("/").pop()!;
-    cv.FS_createDataFile("/", fileName, data, true, false, true);
+
+    try {
+      cv.FS_createDataFile("/", fileName, text, true, false, false);
+      console.log(`[OpenCV] Wrote ${fileName} to virtual FS (${text.length} bytes)`);
+    } catch (err) {
+      // File might already exist from a previous load attempt
+      console.warn(`[OpenCV] FS_createDataFile ${fileName}:`, err);
+    }
   }
 
   /**
@@ -90,6 +118,7 @@ export class OpenCVEmotionEngine {
    */
   analyzeFrame(video: HTMLVideoElement): FaceAnalysis | null {
     if (!this.loaded || !this.faceCascade) return null;
+    if (video.videoWidth === 0 || video.videoHeight === 0) return null;
 
     this.frameCount++;
 
@@ -101,88 +130,85 @@ export class OpenCVEmotionEngine {
     ctx.drawImage(video, 0, 0);
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-    const src = cv.matFromImageData(imageData);
-    const gray = new cv.Mat();
-    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-    cv.equalizeHist(gray, gray);
+    let src: cv.Mat | null = null;
+    let gray: cv.Mat | null = null;
+    let faces: cv.RectVector | null = null;
+    let faceROI: cv.Mat | null = null;
 
-    // Detect faces
-    const faces = new cv.RectVector();
-    this.faceCascade.detectMultiScale(
-      gray,
-      faces,
-      1.1,
-      4,
-      0,
-      new cv.Size(30, 30)
-    );
+    try {
+      src = cv.matFromImageData(imageData);
+      gray = new cv.Mat();
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      cv.equalizeHist(gray, gray);
 
-    if (faces.size() === 0) {
-      // Cleanup
-      src.delete();
-      gray.delete();
-      faces.delete();
-      return null;
-    }
+      // Detect faces — use small min size relative to frame
+      faces = new cv.RectVector();
+      const minFaceSize = Math.max(20, Math.floor(Math.min(video.videoWidth, video.videoHeight) * 0.15));
+      this.faceCascade.detectMultiScale(
+        gray,
+        faces,
+        1.1,
+        3,
+        0,
+        new cv.Size(minFaceSize, minFaceSize)
+      );
 
-    // Use largest face
-    let bestFace = faces.get(0);
-    for (let i = 1; i < faces.size(); i++) {
-      const f = faces.get(i);
-      if (f.width * f.height > bestFace.width * bestFace.height) {
-        bestFace = f;
+      if (faces.size() === 0) {
+        return null;
       }
+
+      // Use largest face
+      let bestFace = faces.get(0);
+      for (let i = 1; i < faces.size(); i++) {
+        const f = faces.get(i);
+        if (f.width * f.height > bestFace.width * bestFace.height) {
+          bestFace = f;
+        }
+      }
+
+      const faceRect = {
+        x: bestFace.x,
+        y: bestFace.y,
+        w: bestFace.width,
+        h: bestFace.height,
+      };
+
+      // Extract face ROI
+      faceROI = gray.roi(
+        new cv.Rect(faceRect.x, faceRect.y, faceRect.w, faceRect.h)
+      );
+
+      const smileResult = this.detectSmile(faceROI, faceRect);
+      const eyeResult = this.detectEyes(faceROI, faceRect);
+      const expressionVariance = this.computeExpressionVariance(faceROI);
+      const motionLevel = this.computeMotion(gray, faceRect);
+
+      // Store previous frame
+      if (this.prevGray) this.prevGray.delete();
+      this.prevGray = gray.clone();
+      this.prevFaceRect = { ...faceRect };
+
+      return {
+        faceRect,
+        hasSmile: smileResult.detected,
+        smileIntensity: smileResult.intensity,
+        eyeOpenness: eyeResult.openness,
+        eyeCount: eyeResult.count,
+        expressionVariance,
+        motionLevel,
+      };
+    } catch (err) {
+      console.error("[OpenCV] analyzeFrame error:", err);
+      return null;
+    } finally {
+      // Always clean up OpenCV Mats
+      src?.delete();
+      gray?.delete();
+      faces?.delete();
+      faceROI?.delete();
     }
-
-    const faceRect = {
-      x: bestFace.x,
-      y: bestFace.y,
-      w: bestFace.width,
-      h: bestFace.height,
-    };
-
-    // Extract face ROI
-    const faceROI = gray.roi(
-      new cv.Rect(faceRect.x, faceRect.y, faceRect.w, faceRect.h)
-    );
-
-    // --- Smile detection ---
-    const smileResult = this.detectSmile(faceROI, faceRect);
-
-    // --- Eye detection ---
-    const eyeResult = this.detectEyes(faceROI, faceRect);
-
-    // --- Expression variance (how expressive the face is) ---
-    const expressionVariance = this.computeExpressionVariance(faceROI);
-
-    // --- Motion detection ---
-    const motionLevel = this.computeMotion(gray, faceRect);
-
-    // Store previous frame
-    if (this.prevGray) this.prevGray.delete();
-    this.prevGray = gray.clone();
-    this.prevFaceRect = { ...faceRect };
-
-    // Cleanup
-    src.delete();
-    gray.delete();
-    faceROI.delete();
-    faces.delete();
-
-    return {
-      faceRect,
-      hasSmile: smileResult.detected,
-      smileIntensity: smileResult.intensity,
-      eyeOpenness: eyeResult.openness,
-      eyeCount: eyeResult.count,
-      expressionVariance,
-      motionLevel,
-    };
   }
 
-  /**
-   * Detect smile in the lower half of the face.
-   */
   private detectSmile(
     faceROI: cv.Mat,
     faceRect: { w: number; h: number }
@@ -190,171 +216,154 @@ export class OpenCVEmotionEngine {
     if (!this.smileCascade)
       return { detected: false, intensity: 0 };
 
-    // Only search in the lower 40% of the face (mouth region)
-    const mouthY = Math.floor(faceRect.h * 0.6);
-    const mouthH = faceRect.h - mouthY;
-    const mouthROI = faceROI.roi(
-      new cv.Rect(0, mouthY, faceRect.w, mouthH)
-    );
+    let mouthROI: cv.Mat | null = null;
+    let smiles: cv.RectVector | null = null;
+    try {
+      const mouthY = Math.floor(faceRect.h * 0.6);
+      const mouthH = faceRect.h - mouthY;
+      mouthROI = faceROI.roi(new cv.Rect(0, mouthY, faceRect.w, mouthH));
 
-    const smiles = new cv.RectVector();
-    this.smileCascade.detectMultiScale(
-      mouthROI,
-      smiles,
-      1.7,
-      22,
-      0,
-      new cv.Size(25, 15)
-    );
+      smiles = new cv.RectVector();
+      this.smileCascade.detectMultiScale(
+        mouthROI,
+        smiles,
+        1.7,
+        22,
+        0,
+        new cv.Size(25, 15)
+      );
 
-    const detected = smiles.size() > 0;
-    // Intensity based on number of detections (more = more confident) and size
-    let intensity = 0;
-    if (detected) {
-      const smile = smiles.get(0);
-      intensity = Math.min(1, (smile.width / faceRect.w) * 1.5);
+      const detected = smiles.size() > 0;
+      let intensity = 0;
+      if (detected) {
+        const smile = smiles.get(0);
+        intensity = Math.min(1, (smile.width / faceRect.w) * 1.5);
+      }
+      return { detected, intensity };
+    } catch {
+      return { detected: false, intensity: 0 };
+    } finally {
+      mouthROI?.delete();
+      smiles?.delete();
     }
-
-    mouthROI.delete();
-    smiles.delete();
-
-    return { detected, intensity };
   }
 
-  /**
-   * Detect eyes in the upper half of the face.
-   */
   private detectEyes(
     faceROI: cv.Mat,
     faceRect: { w: number; h: number }
   ): { count: number; openness: number } {
     if (!this.eyeCascade) return { count: 0, openness: 0.5 };
 
-    // Only search in the upper 60% of the face
-    const eyeH = Math.floor(faceRect.h * 0.6);
-    const eyeROI = faceROI.roi(new cv.Rect(0, 0, faceRect.w, eyeH));
-
-    const eyes = new cv.RectVector();
-    this.eyeCascade.detectMultiScale(
-      eyeROI,
-      eyes,
-      1.1,
-      5,
-      0,
-      new cv.Size(20, 20)
-    );
-
-    const count = Math.min(eyes.size(), 2);
-
-    // Eye openness: ratio of eye height to face height
-    let openness = 0.5;
-    if (count > 0) {
-      let totalHeight = 0;
-      for (let i = 0; i < count; i++) {
-        totalHeight += eyes.get(i).height;
-      }
-      const avgHeight = totalHeight / count;
-      openness = Math.min(1, (avgHeight / faceRect.h) * 5);
-    }
-
-    eyeROI.delete();
-    eyes.delete();
-
-    return { count, openness };
-  }
-
-  /**
-   * Compute pixel intensity variance in the face region.
-   * Higher variance = more expression/texture = more animated face.
-   */
-  private computeExpressionVariance(faceROI: cv.Mat): number {
-    const mean = new cv.Mat();
-    const stddev = new cv.Mat();
-    cv.meanStdDev(faceROI, mean, stddev);
-
-    // OpenCV.js stores meanStdDev results in data64F (Float64Array)
-    let variance = 40;
+    let eyeROI: cv.Mat | null = null;
+    let eyes: cv.RectVector | null = null;
     try {
-      if (stddev.data64F && stddev.data64F.length > 0) {
-        variance = stddev.data64F[0];
-      } else if (stddev.data32F && stddev.data32F.length > 0) {
-        variance = stddev.data32F[0];
+      const eyeH = Math.floor(faceRect.h * 0.6);
+      eyeROI = faceROI.roi(new cv.Rect(0, 0, faceRect.w, eyeH));
+
+      eyes = new cv.RectVector();
+      this.eyeCascade.detectMultiScale(
+        eyeROI,
+        eyes,
+        1.1,
+        5,
+        0,
+        new cv.Size(15, 15)
+      );
+
+      const count = Math.min(eyes.size(), 2);
+      let openness = 0.5;
+      if (count > 0) {
+        let totalHeight = 0;
+        for (let i = 0; i < count; i++) {
+          totalHeight += eyes.get(i).height;
+        }
+        openness = Math.min(1, ((totalHeight / count) / faceRect.h) * 5);
       }
+      return { count, openness };
     } catch {
-      variance = 40;
+      return { count: 0, openness: 0.5 };
+    } finally {
+      eyeROI?.delete();
+      eyes?.delete();
     }
-
-    mean.delete();
-    stddev.delete();
-
-    // Normalize: typical stddev range for a face is 30-60
-    return Math.min(1, Math.max(0, (variance - 25) / 40));
   }
 
-  /**
-   * Compute motion between frames using frame differencing.
-   */
+  private computeExpressionVariance(faceROI: cv.Mat): number {
+    let mean: cv.Mat | null = null;
+    let stddev: cv.Mat | null = null;
+    try {
+      mean = new cv.Mat();
+      stddev = new cv.Mat();
+      cv.meanStdDev(faceROI, mean, stddev);
+
+      let variance = 40;
+      try {
+        if (stddev.data64F && stddev.data64F.length > 0) {
+          variance = stddev.data64F[0];
+        } else if (stddev.data32F && stddev.data32F.length > 0) {
+          variance = stddev.data32F[0];
+        }
+      } catch {
+        variance = 40;
+      }
+
+      return Math.min(1, Math.max(0, (variance - 25) / 40));
+    } catch {
+      return 0.5;
+    } finally {
+      mean?.delete();
+      stddev?.delete();
+    }
+  }
+
   private computeMotion(
     currentGray: cv.Mat,
     currentFaceRect: { x: number; y: number; w: number; h: number }
   ): number {
     if (!this.prevGray || !this.prevFaceRect) return 0.3;
 
+    let currFace: cv.Mat | null = null;
+    let prevResized: cv.Mat | null = null;
+    let prevFace: cv.Mat | null = null;
+    let diff: cv.Mat | null = null;
+    let thresh: cv.Mat | null = null;
+
     try {
-      // Position-based motion (how much did the face move?)
-      const dx = Math.abs(currentFaceRect.x - this.prevFaceRect.x);
-      const dy = Math.abs(currentFaceRect.y - this.prevFaceRect.y);
       const posMotion = Math.min(
         1,
-        (dx + dy) / (currentFaceRect.w * 0.3)
+        (Math.abs(currentFaceRect.x - this.prevFaceRect.x) +
+          Math.abs(currentFaceRect.y - this.prevFaceRect.y)) /
+          (currentFaceRect.w * 0.3)
       );
 
-      // Pixel-based motion in face region
-      const currFace = currentGray.roi(
-        new cv.Rect(
-          currentFaceRect.x,
-          currentFaceRect.y,
-          currentFaceRect.w,
-          currentFaceRect.h
-        )
+      currFace = currentGray.roi(
+        new cv.Rect(currentFaceRect.x, currentFaceRect.y, currentFaceRect.w, currentFaceRect.h)
       );
 
-      // Resize previous gray to match if dimensions differ
-      const prevResized = new cv.Mat();
-      cv.resize(
-        this.prevGray,
-        prevResized,
-        new cv.Size(currentGray.cols, currentGray.rows)
+      prevResized = new cv.Mat();
+      cv.resize(this.prevGray, prevResized, new cv.Size(currentGray.cols, currentGray.rows));
+
+      prevFace = prevResized.roi(
+        new cv.Rect(currentFaceRect.x, currentFaceRect.y, currentFaceRect.w, currentFaceRect.h)
       );
 
-      const prevFace = prevResized.roi(
-        new cv.Rect(
-          currentFaceRect.x,
-          currentFaceRect.y,
-          currentFaceRect.w,
-          currentFaceRect.h
-        )
-      );
-
-      const diff = new cv.Mat();
+      diff = new cv.Mat();
       cv.absdiff(currFace, prevFace, diff);
 
-      const thresh = new cv.Mat();
+      thresh = new cv.Mat();
       cv.threshold(diff, thresh, 25, 255, cv.THRESH_BINARY);
 
-      const pixelMotion =
-        cv.countNonZero(thresh) /
-        (currentFaceRect.w * currentFaceRect.h);
-
-      currFace.delete();
-      prevFace.delete();
-      prevResized.delete();
-      diff.delete();
-      thresh.delete();
+      const pixelMotion = cv.countNonZero(thresh) / (currentFaceRect.w * currentFaceRect.h);
 
       return Math.min(1, posMotion * 0.4 + pixelMotion * 2);
     } catch {
       return 0.3;
+    } finally {
+      currFace?.delete();
+      prevResized?.delete();
+      prevFace?.delete();
+      diff?.delete();
+      thresh?.delete();
     }
   }
 
@@ -376,7 +385,6 @@ export class OpenCVEmotionEngine {
 
     const { faceRect } = analysis;
 
-    // Face rectangle color based on learning state
     const stateColors: Record<string, string> = {
       engaged: "#10b981",
       delighted: "#3b82f6",
@@ -386,24 +394,23 @@ export class OpenCVEmotionEngine {
     };
     const color = stateColors[learningState] || "#6366f1";
 
-    // Draw face rectangle with rounded corners
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 10;
-
     // Mirror the x coordinate since video is mirrored
     const mx = videoWidth - faceRect.x - faceRect.w;
 
-    // Corner lines instead of full rectangle (looks more techy)
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 8;
+
+    // Corner brackets
     const cornerLen = Math.min(faceRect.w, faceRect.h) * 0.2;
     this.drawCorners(ctx, mx, faceRect.y, faceRect.w, faceRect.h, cornerLen);
 
-    // Engagement arc
+    // Engagement arc above face
     ctx.shadowBlur = 0;
     const centerX = mx + faceRect.w / 2;
-    const centerY = faceRect.y - 15;
-    const radius = faceRect.w * 0.35;
+    const centerY = faceRect.y - 12;
+    const radius = faceRect.w * 0.3;
 
     ctx.beginPath();
     ctx.arc(centerX, centerY, radius, Math.PI, 2 * Math.PI, false);
@@ -412,57 +419,32 @@ export class OpenCVEmotionEngine {
     ctx.stroke();
 
     ctx.beginPath();
-    const endAngle = Math.PI + (engagementScore / 100) * Math.PI;
-    ctx.arc(centerX, centerY, radius, Math.PI, endAngle, false);
+    ctx.arc(centerX, centerY, radius, Math.PI, Math.PI + (engagementScore / 100) * Math.PI, false);
     ctx.strokeStyle = color;
     ctx.lineWidth = 3;
     ctx.stroke();
 
-    // Score text
     ctx.fillStyle = color;
-    ctx.font = "bold 11px monospace";
+    ctx.font = "bold 10px monospace";
     ctx.textAlign = "center";
-    ctx.fillText(`${engagementScore}%`, centerX, centerY + 4);
-
-    // Smile indicator
-    if (analysis.hasSmile) {
-      ctx.fillStyle = "#10b981";
-      ctx.font = "16px sans-serif";
-      ctx.fillText("😊", mx + faceRect.w + 8, faceRect.y + 20);
-    }
+    ctx.fillText(`${engagementScore}%`, centerX, centerY + 3);
   }
 
   private drawCorners(
     ctx: CanvasRenderingContext2D,
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-    len: number
+    x: number, y: number, w: number, h: number, len: number
   ): void {
-    // Top-left
     ctx.beginPath();
-    ctx.moveTo(x, y + len);
-    ctx.lineTo(x, y);
-    ctx.lineTo(x + len, y);
+    ctx.moveTo(x, y + len); ctx.lineTo(x, y); ctx.lineTo(x + len, y);
     ctx.stroke();
-    // Top-right
     ctx.beginPath();
-    ctx.moveTo(x + w - len, y);
-    ctx.lineTo(x + w, y);
-    ctx.lineTo(x + w, y + len);
+    ctx.moveTo(x + w - len, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + len);
     ctx.stroke();
-    // Bottom-left
     ctx.beginPath();
-    ctx.moveTo(x, y + h - len);
-    ctx.lineTo(x, y + h);
-    ctx.lineTo(x + len, y + h);
+    ctx.moveTo(x, y + h - len); ctx.lineTo(x, y + h); ctx.lineTo(x + len, y + h);
     ctx.stroke();
-    // Bottom-right
     ctx.beginPath();
-    ctx.moveTo(x + w - len, y + h);
-    ctx.lineTo(x + w, y + h);
-    ctx.lineTo(x + w, y + h - len);
+    ctx.moveTo(x + w - len, y + h); ctx.lineTo(x + w, y + h); ctx.lineTo(x + w, y + h - len);
     ctx.stroke();
   }
 
