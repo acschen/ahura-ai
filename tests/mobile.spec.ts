@@ -160,8 +160,9 @@ test.describe("Learn Page - Mobile Dashboard Drawer", () => {
 
     await page.goto("/learn?topic=TypeScript");
 
-    // On desktop, the webcam feed with Enable Camera button should be visible in the sidebar
+    // On desktop, sidebar with webcam and emotion dashboard should be visible
     await expect(page.getByRole("button", { name: "Enable Camera" })).toBeVisible();
+    await expect(page.getByText("Enable your camera to see real-time emotion analytics")).toBeVisible();
   });
 });
 
